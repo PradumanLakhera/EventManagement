@@ -13,6 +13,10 @@ const connectDB = async () => {
       `MongoDB connected: ${connection.connection.host}`
     );
 
+    console.log(
+      `MongoDB database: ${connection.connection.name}`
+    );
+
     return connection;
   } catch (error) {
     console.error(
