@@ -5,7 +5,7 @@ import {
   Navigate
 } from "react-router-dom";
 
-import AdminLogin from "./pages/admin/adminLogin";
+import AdminLogin from "./pages/admin/adminlogin";
 import AdminDashboard from "./pages/admin/admindashboard";
 import Room from "./pages/room/room";
 import Registered from "./pages/room/Registered";
