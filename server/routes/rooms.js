@@ -1408,19 +1408,30 @@ router.post(
 
       if (
         round.status !==
-        "voting"
+          "active" &&
+        round.status !==
+          "voting"
       ) {
         return res.status(400).json({
           message:
-            "Voting is not open for this round."
+            "This round is not accepting votes."
         });
       }
 
-      const participantId =
-        String(
-          req.body.participantId ||
-            ""
-        );
+      const {
+        participantId,
+        selectedParticipantId
+      } = req.body || {};
+
+      if (
+        !participantId ||
+        !selectedParticipantId
+      ) {
+        return res.status(400).json({
+          message:
+            "Participant ID and selected participant ID are required."
+        });
+      }
 
       const participant =
         getParticipant(
@@ -1435,465 +1446,107 @@ router.post(
         });
       }
 
-      const group =
-        round.groups.find(
-          (item) =>
-            item.members.some(
-              (member) =>
-                String(
-                  member.participantId
-                ) ===
-                participantId
-            )
-        );
-
-      if (!group) {
-        return res.status(400).json({
-          message:
-            "Participant is not assigned to a conversation group."
-        });
-      }
-
-      const allowedIds =
-        group.members
-          .map(
-            (member) =>
-              String(
-                member.participantId
-              )
-          )
-          .filter(
-            (id) =>
-              id !== participantId
-          );
-
-      const requested =
-        Array.isArray(
-          req.body.selectedParticipants
-        )
-          ? req.body
-              .selectedParticipants
-          : [];
-
-      const selectedParticipants =
-        [
-          ...new Set(
-            requested
-              .map((id) =>
-                String(id)
-              )
-              .filter((id) =>
-                allowedIds.includes(id)
-              )
-          )
-        ];
-
-      const existing =
-        round.selections.find(
+      const hasVoted =
+        round.selections.some(
           (selection) =>
             String(
               selection.participantId
             ) ===
-            participantId
+            String(
+              participant._id
+            )
         );
 
-      if (existing) {
-        existing.selectedParticipants =
-          selectedParticipants;
-      } else {
-        round.selections.push({
-          participantId,
-          selectedParticipants
-        });
-      }
-
-      round.status =
-        "voting";
-
-      await room.save();
-
-      return res.json({
-        message:
-          "Selection saved privately.",
-        hasVoted: true
-      });
-    } catch (error) {
-      console.error(
-        "Vote error:",
-        error
-      );
-
-      return res.status(500).json({
-        message: "Server error."
-      });
-    }
-  }
-);
-
-router.post(
-  "/:roomCode/rounds/:roundNumber/complete",
-  authenticateAdmin,
-  async (req, res) => {
-    try {
-      const room =
-        await Room.findOne({
-          roomCode:
-            req.params.roomCode
-        });
-
-      if (!room) {
-        return res.status(404).json({
+      if (hasVoted) {
+        return res.status(400).json({
           message:
-            "Room not found."
+            "You have already voted in this round."
         });
       }
 
-      const roundNumber =
-        Number(
-          req.params.roundNumber
+      const targetParticipant =
+        getParticipant(
+          room,
+          selectedParticipantId
         );
 
-      const round =
-        room.rounds.find(
-          (item) =>
-            item.roundNumber ===
-            roundNumber
+      if (!targetParticipant) {
+        return res.status(404).json({
+          message:
+            "Selected participant not found."
+        });
+      }
+
+      const isSameGroup =
+        round.groups.some(
+          (group) =>
+            group.members.some(
+              (member) =>
+                String(
+                  member.participantId
+                ) ===
+                String(
+                  participant._id
+                )
+            ) &&
+            group.members.some(
+              (member) =>
+                String(
+                  member.participantId
+                ) ===
+                String(
+                  targetParticipant._id
+                )
+            )
         );
 
-      if (!round) {
-        return res.status(404).json({
-          message:
-            "Round not found."
-        });
-      }
-
-      if (
-        round.status ===
-        "completed"
-      ) {
-        return res.json({
-          message:
-            `Round ${roundNumber} is already complete.`,
-          room
-        });
-      }
-
-      if (round.status === "active") {
-        round.status =
-          "voting";
-
-        room.phase =
-          "voting";
-
-        await room.save();
-
-        return res.json({
-          message:
-            `Round ${roundNumber} conversation completed. Voting is now open.`,
-          room
-        });
-      }
-
-      if (round.status !== "voting") {
+      if (!isSameGroup) {
         return res.status(400).json({
           message:
-            "Invalid round status."
+            "You can only vote for someone in your conversation group."
         });
       }
 
-      round.status =
-        "completed";
-
-      if (
-        roundNumber <
-        room.totalRounds
-      ) {
-        room.phase =
-          "conversation";
-      } else {
-        room.phase =
-          "completed";
-      }
-
-      await room.save();
-
-      return res.json({
-        message:
-          `Round ${roundNumber} completed.`,
-        room
+      round.selections.push({
+        participantId:
+          participant._id,
+        selectedParticipantId:
+          targetParticipant._id,
+        createdAt: new Date()
       });
-    } catch (error) {
-      console.error(
-        "Complete round error:",
-        error
-      );
 
-      return res.status(500).json({
-        message: "Server error."
-      });
-    }
-  }
-);
-
-router.post(
-  "/:roomCode/matchmaking/finalize",
-  authenticateAdmin,
-  async (req, res) => {
-    try {
-      const room =
-        await Room.findOne({
-          roomCode:
-            req.params.roomCode
-        });
-
-      if (!room) {
-        return res.status(404).json({
-          message:
-            "Room not found."
-        });
-      }
-
-      if (
-        room.matchmakingCompleted
-      ) {
-        return res.status(400).json({
-          message:
-            "Matchmaking has already been completed."
-        });
-      }
-
-      if (
-        room.rounds.length !==
-        room.totalRounds
-      ) {
-        return res.status(400).json({
-          message:
-            "All conversation rounds must be completed first."
-        });
-      }
-
-      const incompleteRound =
-        room.rounds.find(
-          (round) =>
-            round.status !==
-            "completed"
-        );
-
-      if (incompleteRound) {
-        return res.status(400).json({
-          message:
-            `Round ${incompleteRound.roundNumber} has not been completed.`
-        });
-      }
-
-      room.finalGroups =
-        buildFinalGroups(room);
-
-      room.matches =
-        buildAdminMatches(room);
-
-      room.matchmakingCompleted =
-        true;
-
-      room.phase =
-        "completed";
-
-      await room.save();
-
-      return res.json({
-        message:
-          "Matchmaking completed.",
-        finalGroups:
-          room.finalGroups,
-        matches:
-          room.matches
-      });
-    } catch (error) {
-      console.error(
-        "Finalize matchmaking error:",
-        error
-      );
-
-      return res.status(500).json({
-        message: "Server error."
-      });
-    }
-  }
-);
-
-router.get(
-  "/:roomCode/matchmaking",
-  authenticateAdmin,
-  async (req, res) => {
-    try {
-      const room =
-        await Room.findOne({
-          roomCode:
-            req.params.roomCode
-        });
-
-      if (!room) {
-        return res.status(404).json({
-          message:
-            "Room not found."
-        });
-      }
-
-      const selections = [];
-
-      for (
-        const round of
-        room.rounds || []
-      ) {
-        for (
-          const selection of
-          round.selections || []
-        ) {
-          const participant =
-            getParticipant(
-              room,
-              selection.participantId
-            );
-
-          const selected =
-            (
-              selection.selectedParticipants ||
-              []
-            ).map(
-              (selectedId) => {
-                const selectedParticipant =
-                  getParticipant(
-                    room,
-                    selectedId
-                  );
-
-                return {
-                  participantId:
+      const allParticipantsVoted =
+        round.groups.every(
+          (group) =>
+            group.members.every(
+              (member) =>
+                round.selections.some(
+                  (selection) =>
                     String(
-                      selectedId
-                    ),
-                  username:
-                    selectedParticipant
-                      ?.username ||
-                    "Unknown"
-                };
-              }
-            );
-
-          selections.push({
-            roundNumber:
-              round.roundNumber,
-
-            participantId:
-              String(
-                selection.participantId
-              ),
-
-            username:
-              participant?.username ||
-              "Unknown",
-
-            selectedParticipants:
-              selected
-          });
-        }
-      }
-
-      const mutualMatches =
-        getMutualPairs(room).map(
-          (pair) => {
-            const first =
-              getParticipant(
-                room,
-                pair.a
-              );
-
-            const second =
-              getParticipant(
-                room,
-                pair.b
-              );
-
-            return {
-              participants: [
-                pair.a,
-                pair.b
-              ],
-
-              usernames: [
-                first?.username ||
-                  "Unknown",
-                second?.username ||
-                  "Unknown"
-              ]
-            };
-          }
+                      selection.participantId
+                    ) ===
+                    String(
+                      member.participantId
+                    )
+                )
+            )
         );
 
-      return res.json({
-        roomCode:
-          room.roomCode,
-
-        matchmakingCompleted:
-          room.matchmakingCompleted,
-
-        selections,
-
-        mutualMatches,
-
-        finalGroups:
-          room.finalGroups || [],
-
-        matches:
-          room.matches || []
-      });
-    } catch (error) {
-      console.error(
-        "Get matchmaking error:",
-        error
-      );
-
-      return res.status(500).json({
-        message: "Server error."
-      });
-    }
-  }
-);
-
-router.delete(
-  "/:roomCode",
-  authenticateAdmin,
-  async (req, res) => {
-    try {
-      const room =
-        await Room.findOneAndUpdate(
-          {
-            roomCode:
-              req.params.roomCode
-          },
-          {
-            active: false
-          },
-          {
-            new: true
-          }
-        );
-
-      if (!room) {
-        return res.status(404).json({
-          message:
-            "Room not found."
-        });
+      if (allParticipantsVoted) {
+        round.status = "voting";
+        room.phase = "voting";
       }
+
+      await room.save();
 
       return res.json({
         message:
-          "Room deleted successfully.",
-        room
+          "Vote recorded.",
+        round
       });
     } catch (error) {
       console.error(
-        "Delete room error:",
+        "Vote submission error:",
         error
       );
 
@@ -1903,5 +1556,3 @@ router.delete(
     }
   }
 );
-
-module.exports = router;
