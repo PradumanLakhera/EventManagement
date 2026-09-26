@@ -117,8 +117,9 @@ function Round() {
         );
 
         if (
-          Number(data.currentRound) !==
-          currentRound
+          Number(
+            data.currentRound
+          ) !== currentRound
         ) {
           navigate(
             `/room/${roomCode}/registered`,
@@ -138,7 +139,10 @@ function Round() {
           return;
         }
 
-        if (data.hasVoted) {
+        if (
+          data.roundStatus ===
+          "completed"
+        ) {
           navigate(
             `/room/${roomCode}/registered`,
             {
@@ -179,8 +183,91 @@ function Round() {
     navigate
   ]);
 
+  useEffect(() => {
+    if (!participantId) {
+      return;
+    }
+
+    const interval =
+      setInterval(async () => {
+        try {
+          const response =
+            await fetch(
+              `${API}/rooms/${roomCode}/participant/${participantId}`
+            );
+
+          const data =
+            await response.json();
+
+          if (!response.ok) {
+            return;
+          }
+
+          if (
+            Number(
+              data.currentRound
+            ) !== currentRound
+          ) {
+            navigate(
+              `/room/${roomCode}/registered`,
+              {
+                state: {
+                  participantId:
+                    data.participantId,
+                  username:
+                    data.username,
+                  roomName:
+                    data.roomName
+                },
+                replace: true
+              }
+            );
+
+            return;
+          }
+
+          if (
+            data.roundStatus ===
+            "completed"
+          ) {
+            navigate(
+              `/room/${roomCode}/registered`,
+              {
+                state: {
+                  participantId:
+                    data.participantId,
+                  username:
+                    data.username,
+                  roomName:
+                    data.roomName
+                },
+                replace: true
+              }
+            );
+
+            return;
+          }
+
+          setState(data);
+        } catch {
+        }
+      }, 2000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [
+    roomCode,
+    participantId,
+    currentRound,
+    navigate
+  ]);
+
   const refreshState = async () => {
-    if (!participantId || refreshing) {
+    if (
+      !participantId ||
+      refreshing
+    ) {
       return;
     }
 
@@ -206,8 +293,9 @@ function Round() {
       }
 
       if (
-        Number(data.currentRound) !==
-        currentRound
+        Number(
+          data.currentRound
+        ) !== currentRound
       ) {
         navigate(
           `/room/${roomCode}/registered`,
@@ -227,7 +315,10 @@ function Round() {
         return;
       }
 
-      if (data.hasVoted) {
+      if (
+        data.roundStatus ===
+        "completed"
+      ) {
         navigate(
           `/room/${roomCode}/registered`,
           {
@@ -270,7 +361,8 @@ function Round() {
           current.includes(id)
         ) {
           return current.filter(
-            (item) => item !== id
+            (item) =>
+              item !== id
           );
         }
 
@@ -285,7 +377,9 @@ function Round() {
   const submitVotes = async () => {
     if (
       submitting ||
-      !isVoting
+      !state ||
+      state.roundStatus !==
+        "voting"
     ) {
       return;
     }
@@ -377,14 +471,17 @@ function Round() {
       (member) =>
         String(
           member.participantId
-        ) !== String(participantId)
+        ) !==
+        String(participantId)
     );
 
-  const isConversationOnly =
-    state?.roundStatus === "active";
+  const isVotingOpen =
+    state.roundStatus ===
+    "voting";
 
-  const isVoting =
-    state?.roundStatus === "voting";
+  const isConversationOpen =
+    state.roundStatus ===
+    "active";
 
   const progress =
     Math.min(
@@ -435,7 +532,8 @@ function Round() {
               <div
                 className="round-progress-fill"
                 style={{
-                  width: `${progress}%`
+                  width:
+                    `${progress}%`
                 }}
               />
             </div>
@@ -467,21 +565,21 @@ function Round() {
 
           <div className="round-title">
             <span className="round-eyebrow">
-              {isConversationOnly
+              {isConversationOpen
                 ? "CONVERSATION ROUND"
-                : "CONNECTION ROUND"}
+                : "VOTING ROUND"}
             </span>
 
             <h1>
-              {isConversationOnly
+              {isConversationOpen
                 ? "Meet your group."
                 : "Who would you like to connect with?"}
             </h1>
 
             <p>
-              {isConversationOnly
+              {isConversationOpen
                 ? "Take a moment to introduce yourselves, talk and find something you have in common."
-                : "Choose the people from your group you'd like to connect with after this conversation."}
+                : "Choose one or more people from your group you'd like to connect with."}
             </p>
           </div>
 
@@ -503,6 +601,7 @@ function Round() {
 
               <div className="round-member-count">
                 {members.length}
+
                 <span>
                   people
                 </span>
@@ -528,6 +627,11 @@ function Round() {
                       id
                     );
 
+                  const canSelect =
+                    isVotingOpen &&
+                    !isYou &&
+                    !submitting;
+
                   return (
                     <div
                       key={id}
@@ -536,13 +640,13 @@ function Round() {
                           ? "round-member selected"
                           : isYou
                           ? "round-member you"
+                          : canSelect
+                          ? "round-member clickable"
                           : "round-member"
                       }
                       onClick={() => {
                         if (
-                          !isConversationOnly &&
-                          !isYou &&
-                          !submitting
+                          canSelect
                         ) {
                           toggleParticipant(
                             member
@@ -573,6 +677,10 @@ function Round() {
                           <span>
                             Selected
                           </span>
+                        ) : isVotingOpen ? (
+                          <span>
+                            Tap to select
+                          </span>
                         ) : (
                           <span>
                             Participant
@@ -580,7 +688,7 @@ function Round() {
                         )}
                       </div>
 
-                      {!isConversationOnly &&
+                      {isVotingOpen &&
                         !isYou && (
                           <div
                             className={
@@ -601,24 +709,59 @@ function Round() {
             </div>
           </div>
 
-          {isConversationOnly ? (
-            <div className="round-conversation-card">
-              <div className="round-conversation-icon">
-                ✦
+          {isConversationOpen ? (
+            <>
+              <div className="round-conversation-card">
+                <div className="round-conversation-icon">
+                  ✦
+                </div>
+
+                <div>
+                  <strong>
+                    Take your time.
+                  </strong>
+
+                  <p>
+                    Talk, laugh and get to
+                    know the people around
+                    you.
+                  </p>
+                </div>
               </div>
 
-              <div>
-                <strong>
-                  Take your time.
-                </strong>
+              <div className="round-waiting">
+                <div className="round-waiting-icon">
+                  <span />
+                </div>
 
-                <p>
-                  Talk, laugh and get to
-                  know the people around
-                  you.
-                </p>
+                <div>
+                  <strong>
+                    Enjoy the conversation
+                  </strong>
+
+                  <span>
+                    Voting will appear
+                    automatically when the
+                    organizer completes the
+                    round.
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={
+                    refreshState
+                  }
+                  disabled={
+                    refreshing
+                  }
+                >
+                  {refreshing
+                    ? "Checking..."
+                    : "Check status"}
+                </button>
               </div>
-            </div>
+            </>
           ) : (
             <>
               <div className="round-vote-heading">
@@ -640,16 +783,19 @@ function Round() {
                 </span>
               </div>
 
-              {selected.length === 0 && (
+              {selected.length ===
+                0 && (
                 <div className="round-hint">
-                  Tap the people you'd like
-                  to connect with.
+                  Tap one or more people
+                  you'd like to connect
+                  with.
                 </div>
               )}
 
               {error && (
                 <div className="round-error">
                   <span>!</span>
+
                   {error}
                 </div>
               )}
@@ -681,39 +827,6 @@ function Round() {
             </>
           )}
 
-          {isConversationOnly && (
-            <div className="round-waiting">
-              <div className="round-waiting-icon">
-                <span />
-              </div>
-
-              <div>
-                <strong>
-                  Enjoy the conversation
-                </strong>
-
-                <span>
-                  Your organizer will move
-                  everyone to the next round.
-                </span>
-              </div>
-
-              <button
-                type="button"
-                onClick={
-                  refreshState
-                }
-                disabled={
-                  refreshing
-                }
-              >
-                {refreshing
-                  ? "Checking..."
-                  : "Check status"}
-              </button>
-            </div>
-          )}
-
           <div className="round-bottom">
             <span>
               ROUND {currentRound}
@@ -724,7 +837,7 @@ function Round() {
             </span>
 
             <span>
-              {isConversationOnly
+              {isConversationOpen
                 ? "CONVERSATION"
                 : "VOTING OPEN"}
             </span>
