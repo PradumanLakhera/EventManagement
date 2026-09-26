@@ -15,6 +15,7 @@ connectDB();
 const allowedOrigins = [
   "http://localhost:5173",
   "https://eventmanagement-brown-beta.vercel.app",
+  "https://eventmanagement-git-main-angers-projects-922fbb42.vercel.app",
   "https://pradumanlakhera.github.io"
 ];
 
