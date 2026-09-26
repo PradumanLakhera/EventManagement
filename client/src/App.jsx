@@ -13,7 +13,7 @@ import Round from "./pages/room/Round";
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/EventManagement">
       <Routes>
         <Route
           path="/admin"
