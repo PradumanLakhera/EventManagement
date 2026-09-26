@@ -60,7 +60,7 @@ function AdminDashboard() {
   const loadRooms = async () => {
     try {
       const response = await fetch(
-        "http://localhost:5000/api/rooms",
+        `${import.meta.env.VITE_API_URL}/api/rooms`,
         {
           headers: authHeaders
         }
@@ -90,7 +90,7 @@ function AdminDashboard() {
   const loadRoom = async (roomCode) => {
     try {
       const response = await fetch(
-        `http://localhost:5000/api/rooms/${roomCode}/participants`,
+        `${import.meta.env.VITE_API_URL}/api/rooms/${roomCode}/participants`,
         {
           headers: authHeaders
         }
@@ -205,7 +205,7 @@ function AdminDashboard() {
     try {
       const response =
         await fetch(
-          "http://localhost:5000/api/rooms",
+          `${import.meta.env.VITE_API_URL}/api/rooms`,
           {
             method: "POST",
             headers: {
@@ -271,7 +271,7 @@ function AdminDashboard() {
     try {
       const response =
         await fetch(
-          `http://localhost:5000/api/rooms/${selectedRoom.roomCode}/groups`,
+          `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/groups`,  
           {
             method: "POST",
             headers: {
@@ -330,7 +330,7 @@ function AdminDashboard() {
       try {
         const response =
           await fetch(
-            `http://localhost:5000/api/rooms/${selectedRoom.roomCode}/groups/${groupId}/members`,
+            `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/groups/${groupId}/members`,
             {
               method: "POST",
               headers: {
@@ -389,7 +389,7 @@ function AdminDashboard() {
       try {
         const response =
           await fetch(
-            `http://localhost:5000/api/rooms/${selectedRoom.roomCode}/groups/${groupId}/members/${participantId}`,
+            `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/groups/${groupId}/members/${participantId}`,
             {
               method: "DELETE",
               headers:
@@ -468,7 +468,7 @@ function AdminDashboard() {
       try {
         const response =
           await fetch(
-            `http://localhost:5000/api/rooms/${selectedRoom.roomCode}/groups/${groupId}`,
+            `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/groups/${groupId}`,
             {
               method: "DELETE",
               headers:
@@ -525,7 +525,7 @@ function AdminDashboard() {
       try {
         const response =
           await fetch(
-            `http://localhost:5000/api/rooms/${roomCode}`,
+            `${import.meta.env.VITE_API_URL}/api/rooms/${roomCode}`,
             {
               method: "DELETE",
               headers:
@@ -593,7 +593,7 @@ function AdminDashboard() {
     try {
       const response =
         await fetch(
-          `http://localhost:5000/api/rooms/${selectedRoom.roomCode}/rounds/start`,
+          `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/rounds/start`,
           {
             method: "POST",
             headers: {
@@ -649,7 +649,7 @@ function AdminDashboard() {
       try {
         const response =
           await fetch(
-            `http://localhost:5000/api/rooms/${selectedRoom.roomCode}/rounds/${selectedRoom.currentRound}/complete`,
+            `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/rounds/${selectedRoom.currentRound}/complete`,
             {
               method: "POST",
               headers:
@@ -691,7 +691,7 @@ function AdminDashboard() {
       try {
         const response =
           await fetch(
-            `http://localhost:5000/api/rooms/${roomCode}/matchmaking`,
+            `${import.meta.env.VITE_API_URL}/api/rooms/${roomCode}/matchmaking`,
             {
               headers:
                 authHeaders
@@ -740,7 +740,7 @@ function AdminDashboard() {
       try {
         const response =
           await fetch(
-            `http://localhost:5000/api/rooms/${selectedRoom.roomCode}/matchmaking/finalize`,
+            `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/matchmaking/finalize`,
             {
               method: "POST",
               headers:
