@@ -13,7 +13,8 @@ import Round from "./pages/room/Round";
 
 function App() {
   return (
-    <BrowserRouter basename="/EventManagement">
+    <BrowserRouter
+  basename={import.meta.env.BASE_URL.replace(/\/$/, "")}>
       <Routes>
         <Route
           path="/admin"
