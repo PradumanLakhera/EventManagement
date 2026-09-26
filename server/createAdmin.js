@@ -1,27 +1,37 @@
 const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
+require("dotenv").config();
 
-const connectDB = async () => {
+const Admin = require("./models/admin");
+
+async function createAdmin() {
   try {
-    const connection = await mongoose.connect(
-      process.env.MONGO_URI,
-      {
-        serverSelectionTimeoutMS: 5000
-      }
-    );
+    await mongoose.connect(process.env.MONGO_URI);
 
-    console.log(
-      `MongoDB connected: ${connection.connection.host}`
-    );
+    const username = "Celisha";
+    const password = "ilovepraduman@123";
 
-    return connection;
+    const existingAdmin = await Admin.findOne({ username });
+
+    if (existingAdmin) {
+      console.log("Admin already exists.");
+      process.exit(0);
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await Admin.create({
+      username,
+      password: hashedPassword,
+      role: "admin"
+    });
+
+    console.log("Admin created successfully.");
+    process.exit(0);
   } catch (error) {
-    console.error(
-      "MongoDB connection failed:",
-      error.message
-    );
-
-    throw error;
+    console.error("Error creating admin:", error);
+    process.exit(1);
   }
-};
+}
 
-module.exports = connectDB;
+createAdmin();
