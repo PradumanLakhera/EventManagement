@@ -54,7 +54,7 @@ router.post("/login", async (req, res) => {
       }
     );
 
-    return res.json({
+    return res.status(200).json({
       message: "Login successful.",
       token,
       admin: {
@@ -63,7 +63,6 @@ router.post("/login", async (req, res) => {
         role: admin.role
       }
     });
-
   } catch (error) {
     console.error("Admin login error:", error);
 
@@ -72,3 +71,5 @@ router.post("/login", async (req, res) => {
     });
   }
 });
+
+module.exports = router;
