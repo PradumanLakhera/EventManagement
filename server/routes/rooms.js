@@ -1,81 +1,126 @@
 const express = require("express");
-const Room = require("../models/Room");
-const authenticateAdmin = require("../middleware/authenticateAdmin");
+const crypto = require("crypto");
+
+const Room = require("../models/room");
+const authenticateAdmin = require("../middleware/auth");
 
 const router = express.Router();
+
+const generateRoomCode = () => {
+  return crypto
+    .randomBytes(4)
+    .toString("hex")
+    .toUpperCase()
+    .slice(0, 8);
+};
+
+const generateParticipantId = () => {
+  return crypto
+    .randomBytes(12)
+    .toString("hex");
+};
 
 const shuffle = (array) => {
   const result = [...array];
 
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [result[i], result[j]] = [result[j], result[i]];
+  for (
+    let i = result.length - 1;
+    i > 0;
+    i--
+  ) {
+    const j =
+      Math.floor(
+        Math.random() * (i + 1)
+      );
+
+    [
+      result[i],
+      result[j]
+    ] = [
+      result[j],
+      result[i]
+    ];
   }
 
   return result;
 };
 
-const generateConversationGroups = (participants, room) => {
-  const shuffled = shuffle(participants);
-
-  const groups = [];
-
-  for (let i = 0; i < shuffled.length; i += 4) {
-    groups.push({
-      groupNumber: groups.length + 1,
-      participants: shuffled.slice(i, i + 4).map((participant) => ({
-        participantId: participant._id,
-        username: participant.username,
-        age: participant.age
-      }))
-    });
-  }
-
-  return groups;
+const getParticipant = (
+  room,
+  participantId
+) => {
+  return (
+    room.participants.find(
+      (participant) =>
+        String(participant._id) ===
+        String(participantId)
+    ) || null
+  );
 };
 
-const buildSelectionMap = (room) => {
-  const selectionMap = new Map();
+const normalizeGroupMembers = (
+  room
+) => {
+  if (!Array.isArray(room.groups)) {
+    return;
+  }
 
-  for (const round of room.rounds) {
-    for (const selection of round.selections || []) {
-      const voterId = String(selection.participantId);
+  for (const group of room.groups) {
+    if (!Array.isArray(group.members)) {
+      continue;
+    }
 
-      if (!selectionMap.has(voterId)) {
-        selectionMap.set(voterId, new Set());
-      }
+    for (const member of group.members) {
+      const participant =
+        getParticipant(
+          room,
+          member.participantId
+        );
 
-      for (const selectedId of selection.selectedParticipants || []) {
-        selectionMap.get(voterId).add(String(selectedId));
+      if (participant) {
+        member.username =
+          participant.username;
+      } else if (
+        typeof member.username !==
+        "string"
+      ) {
+        member.username = "";
       }
     }
   }
-
-  return selectionMap;
 };
 
-const getMutualPairs = (room) => {
-  const selectionMap = buildSelectionMap(room);
-  const pairs = [];
+const getPreviousPairs = (room) => {
+  const pairs = new Set();
 
-  for (const [personA, selectedPeople] of selectionMap.entries()) {
-    for (const personB of selectedPeople) {
-      if (personA === personB) continue;
-
-      const personBSelections = selectionMap.get(personB);
-
-      if (
-        personBSelections &&
-        personBSelections.has(personA)
-      ) {
-        const exists = pairs.some(
-          (pair) =>
-            pair.includes(personA) &&
-            pair.includes(personB)
+  for (const round of room.rounds || []) {
+    for (const group of round.groups || []) {
+      const ids =
+        group.members.map(
+          (member) =>
+            String(
+              member.participantId
+            )
         );
 
-        if (!exists) {
-          pairs.push([personA, personB]);
+      for (
+        let i = 0;
+        i < ids.length;
+        i++
+      ) {
+        for (
+          let j = i + 1;
+          j < ids.length;
+          j++
+        ) {
+          const pair = [
+            ids[i],
+            ids[j]
+          ].sort();
+
+          pairs.add(
+            `${pair[0]}:${pair[1]}`
+          );
         }
       }
     }
@@ -84,349 +129,964 @@ const getMutualPairs = (room) => {
   return pairs;
 };
 
-const buildFinalGroups = (room) => {
-  const participants = room.participants.map((participant) => ({
-    participantId: String(participant._id),
-    username: participant.username,
-    age: participant.age
-  }));
+const generateConversationGroups = (
+  participants,
+  room
+) => {
+  if (!participants.length) {
+    return [];
+  }
 
-  const participantMap = new Map(
-    participants.map((participant) => [
-      participant.participantId,
-      participant
-    ])
-  );
+  const previousPairs =
+    getPreviousPairs(room);
 
-  const mutualPairs = getMutualPairs(room);
+  let bestGroups = [];
+  let bestScore = Infinity;
+
+  for (
+    let attempt = 0;
+    attempt < 100;
+    attempt++
+  ) {
+    const shuffled =
+      shuffle(participants);
+
+    const groups = [];
+
+    for (
+      let i = 0;
+      i < shuffled.length;
+      i += 4
+    ) {
+      const members =
+        shuffled.slice(i, i + 4);
+
+      groups.push({
+        groupNumber:
+          groups.length + 1,
+        members:
+          members.map(
+            (participant) => ({
+              participantId:
+                String(
+                  participant._id
+                ),
+              username:
+                participant.username
+            })
+          )
+      });
+    }
+
+    let score = 0;
+
+    for (const group of groups) {
+      const ids =
+        group.members.map(
+          (member) =>
+            member.participantId
+        );
+
+      for (
+        let i = 0;
+        i < ids.length;
+        i++
+      ) {
+        for (
+          let j = i + 1;
+          j < ids.length;
+          j++
+        ) {
+          const pair = [
+            ids[i],
+            ids[j]
+          ].sort();
+
+          if (
+            previousPairs.has(
+              `${pair[0]}:${pair[1]}`
+            )
+          ) {
+            score++;
+          }
+        }
+      }
+    }
+
+    if (score < bestScore) {
+      bestScore = score;
+      bestGroups = groups;
+    }
+
+    if (score === 0) {
+      break;
+    }
+  }
+
+  return bestGroups;
+};
+
+const buildSelectionMap = (
+  room
+) => {
+  const selections = {};
+
+  for (const participant of room.participants) {
+    selections[
+      String(participant._id)
+    ] = new Set();
+  }
+
+  for (const round of room.rounds || []) {
+    for (
+      const selection of
+      round.selections || []
+    ) {
+      const voterId =
+        String(
+          selection.participantId
+        );
+
+      if (!selections[voterId]) {
+        selections[voterId] =
+          new Set();
+      }
+
+      for (
+        const selectedId of
+        selection.selectedParticipants ||
+        []
+      ) {
+        const targetId =
+          String(selectedId);
+
+        if (
+          targetId !== voterId &&
+          room.participants.some(
+            (participant) =>
+              String(
+                participant._id
+              ) === targetId
+          )
+        ) {
+          selections[
+            voterId
+          ].add(targetId);
+        }
+      }
+    }
+  }
+
+  return selections;
+};
+
+const getMutualPairs = (room) => {
+  const selections =
+    buildSelectionMap(room);
+
+  const participantIds =
+    room.participants.map(
+      (participant) =>
+        String(participant._id)
+    );
+
+  const pairs = [];
+  const seen = new Set();
+
+  for (const personA of participantIds) {
+    for (const personB of participantIds) {
+      if (personA === personB) {
+        continue;
+      }
+
+      const key = [
+        personA,
+        personB
+      ]
+        .sort()
+        .join(":");
+
+      if (seen.has(key)) {
+        continue;
+      }
+
+      if (
+        selections[personA]?.has(
+          personB
+        ) &&
+        selections[personB]?.has(
+          personA
+        )
+      ) {
+        seen.add(key);
+
+        pairs.push({
+          a: personA,
+          b: personB
+        });
+      }
+    }
+  }
+
+  return pairs;
+};
+
+const buildFinalGroups = (
+  room
+) => {
+  const participants =
+    room.participants || [];
+
+  const participantIds =
+    participants.map(
+      (participant) =>
+        String(participant._id)
+    );
+
+  const selections =
+    buildSelectionMap(room);
+
+  const mutualPairs =
+    getMutualPairs(room);
 
   const groups = [];
   const assigned = new Set();
 
-  for (const pair of mutualPairs) {
-    const available = pair.filter(
-      (participantId) => !assigned.has(participantId)
-    );
+  const createGroup = () => {
+    const group = {
+      groupNumber:
+        groups.length + 1,
+      members: []
+    };
 
-    if (available.length === 2) {
-      groups.push({
-        groupNumber: groups.length + 1,
-        participants: available.map(
-          (participantId) => participantMap.get(participantId)
-        )
-      });
+    groups.push(group);
 
-      available.forEach((participantId) =>
-        assigned.add(participantId)
-      );
+    return group;
+  };
+
+  const addParticipant = (
+    group,
+    participantId
+  ) => {
+    if (
+      group.members.length >= 4 ||
+      assigned.has(participantId)
+    ) {
+      return false;
     }
-  }
 
-  const remaining = participants.filter(
-    (participant) => !assigned.has(participant.participantId)
-  );
+    const participant =
+      participants.find(
+        (item) =>
+          String(item._id) ===
+          String(participantId)
+      );
 
-  for (let i = 0; i < remaining.length; i += 4) {
-    const group = remaining.slice(i, i + 4);
+    if (!participant) {
+      return false;
+    }
 
-    groups.push({
-      groupNumber: groups.length + 1,
-      participants: group
+    group.members.push({
+      participantId,
+      username:
+        participant.username
     });
 
-    group.forEach((participant) =>
-      assigned.add(participant.participantId)
+    assigned.add(participantId);
+
+    return true;
+  };
+
+  for (const pair of mutualPairs) {
+    if (
+      assigned.has(pair.a) ||
+      assigned.has(pair.b)
+    ) {
+      continue;
+    }
+
+    let group = groups.find(
+      (item) =>
+        item.members.length < 4
+    );
+
+    if (!group) {
+      group = createGroup();
+    }
+
+    addParticipant(
+      group,
+      pair.a
+    );
+
+    addParticipant(
+      group,
+      pair.b
+    );
+  }
+
+  const remaining =
+    participantIds.filter(
+      (id) =>
+        !assigned.has(id)
+    );
+
+  for (const participantId of remaining) {
+    let bestGroup = null;
+    let bestScore = -Infinity;
+
+    for (const group of groups) {
+      if (
+        group.members.length >= 4
+      ) {
+        continue;
+      }
+
+      let score = 0;
+
+      for (const member of group.members) {
+        const memberId =
+          String(
+            member.participantId
+          );
+
+        if (
+          selections[
+            participantId
+          ]?.has(memberId)
+        ) {
+          score += 2;
+        }
+
+        if (
+          selections[
+            memberId
+          ]?.has(participantId)
+        ) {
+          score += 2;
+        }
+      }
+
+      if (
+        score > bestScore
+      ) {
+        bestScore = score;
+        bestGroup = group;
+      }
+    }
+
+    if (!bestGroup) {
+      bestGroup =
+        createGroup();
+    }
+
+    addParticipant(
+      bestGroup,
+      participantId
     );
   }
 
   return groups;
 };
 
-const buildAdminMatches = (room) => {
-  const selectionMap = buildSelectionMap(room);
-  const participants = room.participants.map((participant) => ({
-    participantId: String(participant._id),
-    username: participant.username,
-    age: participant.age
-  }));
+const buildAdminMatches = (
+  room
+) => {
+  const mutualPairs =
+    getMutualPairs(room);
 
-  const participantMap = new Map(
-    participants.map((participant) => [
-      participant.participantId,
-      participant
-    ])
-  );
+  return mutualPairs.map(
+    (pair) => {
+      const first =
+        getParticipant(
+          room,
+          pair.a
+        );
 
-  const matches = [];
-  const processed = new Set();
+      const second =
+        getParticipant(
+          room,
+          pair.b
+        );
 
-  for (const [participantId, selections] of selectionMap.entries()) {
-    for (const selectedId of selections) {
-      if (participantId === selectedId) continue;
-
-      const reverseSelections = selectionMap.get(selectedId);
-
-      if (
-        reverseSelections &&
-        reverseSelections.has(participantId)
-      ) {
-        const key = [participantId, selectedId]
-          .sort()
-          .join("-");
-
-        if (!processed.has(key)) {
-          processed.add(key);
-
-          matches.push({
-            participant1:
-              participantMap.get(participantId),
-            participant2:
-              participantMap.get(selectedId)
-          });
-        }
-      }
+      return {
+        participantA: pair.a,
+        participantB: pair.b,
+        usernameA:
+          first?.username || "",
+        usernameB:
+          second?.username || ""
+      };
     }
-  }
-
-  return matches;
+  );
 };
 
-router.post("/", authenticateAdmin, async (req, res) => {
-  try {
-    const { name, totalRounds } = req.body;
-
-    if (!name || !name.trim()) {
-      return res.status(400).json({
-        message: "Room name is required."
-      });
-    }
-
-    const rounds = Number(totalRounds);
-
-    if (!rounds || rounds < 1) {
-      return res.status(400).json({
-        message: "Total rounds must be at least 1."
-      });
-    }
-
-    const roomCode = Math.random()
-      .toString(36)
-      .substring(2, 8)
-      .toUpperCase();
-
-    const room = await Room.create({
-      name: name.trim(),
-      roomCode,
-      totalRounds: rounds,
-      currentRound: 0,
-      phase: "waiting",
-      participants: [],
-      rounds: [],
-      finalGroups: [],
-      matches: [],
-      matchmakingCompleted: false
-    });
-
-    return res.status(201).json({
-      message: "Room created successfully.",
-      room
-    });
-  } catch (error) {
-    console.error("Create room error:", error);
-
-    return res.status(500).json({
-      message: "Server error."
-    });
-  }
-});
-
-router.get("/", authenticateAdmin, async (req, res) => {
-  try {
-    const rooms = await Room.find()
-      .sort({ createdAt: -1 })
-      .lean();
-
-    return res.json({
-      rooms
-    });
-  } catch (error) {
-    console.error("Get rooms error:", error);
-
-    return res.status(500).json({
-      message: "Server error."
-    });
-  }
-});
-
-router.get("/:roomCode", async (req, res) => {
-  try {
-    const room = await Room.findOne({
-      roomCode: req.params.roomCode.toUpperCase()
-    }).lean();
-
-    if (!room) {
-      return res.status(404).json({
-        message: "Room not found."
-      });
-    }
-
-    return res.json({
-      room
-    });
-  } catch (error) {
-    console.error("Get room error:", error);
-
-    return res.status(500).json({
-      message: "Server error."
-    });
-  }
-});
-
-router.post("/:roomCode/register", async (req, res) => {
-  try {
-    const room = await Room.findOne({
-      roomCode: req.params.roomCode.toUpperCase()
-    });
-
-    if (!room) {
-      return res.status(404).json({
-        message: "Room not found."
-      });
-    }
-
-    if (room.matchmakingCompleted) {
-      return res.status(400).json({
-        message: "Matchmaking has already been completed."
-      });
-    }
-
-    const username = req.body.username?.trim();
-    const age = Number(req.body.age);
-
-    if (!username || !age) {
-      return res.status(400).json({
-        message: "Username and age are required."
-      });
-    }
-
-    if (age < 13) {
-      return res.status(400).json({
-        message: "Minimum age is 13."
-      });
-    }
-
-    const duplicate = room.participants.some(
-      (participant) =>
-        participant.username.toLowerCase() ===
-        username.toLowerCase()
-    );
-
-    if (duplicate) {
-      return res.status(400).json({
-        message: "Username is already registered."
-      });
-    }
-
-    room.participants.push({
-      username,
-      age
-    });
-
-    await room.save();
-
-    const participant =
-      room.participants[room.participants.length - 1];
-
-    return res.status(201).json({
-      message: "Registration successful.",
-      participantId: participant._id,
-      username: participant.username,
-      age: participant.age,
-      roomCode: room.roomCode
-    });
-  } catch (error) {
-    console.error("Participant registration error:", error);
-
-    return res.status(500).json({
-      message: "Server error."
-    });
-  }
-});
-
 router.get(
-  "/:roomCode/participant/:participantId",
+  "/",
+  authenticateAdmin,
   async (req, res) => {
     try {
-      const room = await Room.findOne({
-        roomCode: req.params.roomCode.toUpperCase()
-      }).lean();
+      const rooms =
+        await Room.find({
+          active: true
+        }).sort({
+          createdAt: -1
+        });
+
+      return res.json({
+        rooms
+      });
+    } catch (error) {
+      console.error(
+        "Get rooms error:",
+        error
+      );
+
+      return res.status(500).json({
+        message: "Server error."
+      });
+    }
+  }
+);
+
+router.post(
+  "/",
+  authenticateAdmin,
+  async (req, res) => {
+    try {
+      const name =
+        typeof req.body.name ===
+        "string"
+          ? req.body.name.trim()
+          : "";
+
+      const totalRounds =
+        Number(
+          req.body.totalRounds
+        ) > 0
+          ? Number(
+              req.body.totalRounds
+            )
+          : 3;
+
+      if (!name) {
+        return res.status(400).json({
+          message:
+            "Room name is required."
+        });
+      }
+
+      let roomCode;
+
+      do {
+        roomCode =
+          generateRoomCode();
+      } while (
+        await Room.exists({
+          roomCode
+        })
+      );
+
+      const room =
+        await Room.create({
+          roomCode,
+          name,
+          totalRounds,
+          currentRound: 0,
+          phase: "registration",
+          participants: [],
+          groups: [],
+          rounds: [],
+          finalGroups: [],
+          matchmakingCompleted:
+            false,
+          matches: [],
+          active: true
+        });
+
+      return res.status(201).json({
+        message:
+          "Room created successfully.",
+        room
+      });
+    } catch (error) {
+      console.error(
+        "Create room error:",
+        error
+      );
+
+      return res.status(500).json({
+        message: "Server error."
+      });
+    }
+  }
+);
+
+router.get(
+  "/:roomCode/participants",
+  authenticateAdmin,
+  async (req, res) => {
+    try {
+      const room =
+        await Room.findOne({
+          roomCode:
+            req.params.roomCode,
+          active: true
+        });
 
       if (!room) {
         return res.status(404).json({
-          message: "Room not found."
+          message:
+            "Room not found."
         });
       }
 
-      const participant = room.participants.find(
-        (item) =>
-          String(item._id) ===
-          String(req.params.participantId)
+      normalizeGroupMembers(
+        room
       );
 
-      if (!participant) {
+      return res.json({
+        room
+      });
+    } catch (error) {
+      console.error(
+        "Get participants error:",
+        error
+      );
+
+      return res.status(500).json({
+        message: "Server error."
+      });
+    }
+  }
+);
+
+router.get(
+  "/:roomCode",
+  async (req, res) => {
+    try {
+      const room =
+        await Room.findOne({
+          roomCode:
+            req.params.roomCode,
+          active: true
+        });
+
+      if (!room) {
         return res.status(404).json({
-          message: "Participant not found."
+          message:
+            "Room not found."
         });
-      }
-
-      const currentRound = room.rounds.find(
-        (round) =>
-          round.roundNumber === room.currentRound
-      );
-
-      let group = null;
-
-      if (currentRound) {
-        for (const currentGroup of currentRound.groups) {
-          const found = currentGroup.participants.some(
-            (item) =>
-              String(item.participantId) ===
-              String(participant._id)
-          );
-
-          if (found) {
-            group = currentGroup;
-            break;
-          }
-        }
-      }
-
-      let hasVoted = false;
-
-      if (currentRound) {
-        hasVoted = currentRound.selections.some(
-          (selection) =>
-            String(selection.participantId) ===
-            String(participant._id)
-        );
       }
 
       return res.json({
-        roomCode: room.roomCode,
-        participantId: participant._id,
-        username: participant.username,
-        age: participant.age,
-        currentRound: room.currentRound,
-        totalRounds: room.totalRounds,
-        phase: room.phase,
-        roundStatus: currentRound
-          ? currentRound.status
-          : null,
-        hasVoted,
-        group
+        room
       });
     } catch (error) {
-      console.error("Participant status error:", error);
+      console.error(
+        "Get room error:",
+        error
+      );
+
+      return res.status(500).json({
+        message: "Server error."
+      });
+    }
+  }
+);
+
+router.post(
+  "/:roomCode/join",
+  async (req, res) => {
+    try {
+      const room =
+        await Room.findOne({
+          roomCode:
+            req.params.roomCode,
+          active: true
+        });
+
+      if (!room) {
+        return res.status(404).json({
+          message:
+            "Room not found."
+        });
+      }
+
+      if (
+        room.phase !==
+        "registration"
+      ) {
+        return res.status(400).json({
+          message:
+            "Registration is closed."
+        });
+      }
+
+      const username =
+        typeof req.body.username ===
+        "string"
+          ? req.body.username.trim()
+          : "";
+
+      if (!username) {
+        return res.status(400).json({
+          message:
+            "Username is required."
+        });
+      }
+
+      const duplicate =
+        room.participants.some(
+          (participant) =>
+            participant.username
+              .trim()
+              .toLowerCase() ===
+            username.toLowerCase()
+        );
+
+      if (duplicate) {
+        return res.status(409).json({
+          message:
+            "That username is already registered."
+        });
+      }
+
+      const participantId =
+        generateParticipantId();
+
+      room.participants.push({
+        _id: participantId,
+        username
+      });
+
+      await room.save();
+
+      return res.status(201).json({
+        message:
+          "Participant registered.",
+        participantId,
+        username,
+        roomCode:
+          room.roomCode,
+        roomName:
+          room.name
+      });
+    } catch (error) {
+      console.error(
+        "Join room error:",
+        error
+      );
+
+      return res.status(500).json({
+        message: "Server error."
+      });
+    }
+  }
+);
+
+router.post(
+  "/:roomCode/groups",
+  authenticateAdmin,
+  async (req, res) => {
+    try {
+      const room =
+        await Room.findOne({
+          roomCode:
+            req.params.roomCode
+        });
+
+      if (!room) {
+        return res.status(404).json({
+          message:
+            "Room not found."
+        });
+      }
+
+      const name =
+        typeof req.body.name ===
+        "string"
+          ? req.body.name.trim()
+          : "";
+
+      if (!name) {
+        return res.status(400).json({
+          message:
+            "Group name is required."
+        });
+      }
+
+      if (!room.groups) {
+        room.groups = [];
+      }
+
+      room.groups.push({
+        name,
+        members: []
+      });
+
+      normalizeGroupMembers(
+        room
+      );
+
+      await room.save();
+
+      return res.status(201).json({
+        message:
+          "Group created successfully.",
+        room
+      });
+    } catch (error) {
+      console.error(
+        "Create group error:",
+        error
+      );
+
+      return res.status(500).json({
+        message: "Server error."
+      });
+    }
+  }
+);
+
+router.post(
+  "/:roomCode/groups/:groupId/members",
+  authenticateAdmin,
+  async (req, res) => {
+    try {
+      const room =
+        await Room.findOne({
+          roomCode:
+            req.params.roomCode
+        });
+
+      if (!room) {
+        return res.status(404).json({
+          message:
+            "Room not found."
+        });
+      }
+
+      const group =
+        room.groups.id(
+          req.params.groupId
+        );
+
+      if (!group) {
+        return res.status(404).json({
+          message:
+            "Group not found."
+        });
+      }
+
+      if (
+        group.members.length >= 4
+      ) {
+        return res.status(400).json({
+          message:
+            "A group cannot contain more than 4 participants."
+        });
+      }
+
+      const participantId =
+        String(
+          req.body.participantId ||
+            ""
+        );
+
+      if (!participantId) {
+        return res.status(400).json({
+          message:
+            "Participant ID is required."
+        });
+      }
+
+      const participant =
+        getParticipant(
+          room,
+          participantId
+        );
+
+      if (!participant) {
+        return res.status(404).json({
+          message:
+            "Participant not found."
+        });
+      }
+
+      const alreadyInGroup =
+        room.groups.some(
+          (currentGroup) =>
+            currentGroup.members.some(
+              (member) =>
+                String(
+                  member.participantId
+                ) === participantId
+            )
+        );
+
+      if (alreadyInGroup) {
+        return res.status(400).json({
+          message:
+            "Participant is already assigned to a group."
+        });
+      }
+
+      group.members.push({
+        participantId,
+        username:
+          participant.username
+      });
+
+      normalizeGroupMembers(
+        room
+      );
+
+      await room.save();
+
+      return res.json({
+        message:
+          "Participant added to group.",
+        room
+      });
+    } catch (error) {
+      console.error(
+        "Add participant error:",
+        error
+      );
+
+      return res.status(500).json({
+        message: "Server error."
+      });
+    }
+  }
+);
+
+router.delete(
+  "/:roomCode/groups/:groupId/members/:participantId",
+  authenticateAdmin,
+  async (req, res) => {
+    try {
+      const room =
+        await Room.findOne({
+          roomCode:
+            req.params.roomCode
+        });
+
+      if (!room) {
+        return res.status(404).json({
+          message:
+            "Room not found."
+        });
+      }
+
+      const group =
+        room.groups.id(
+          req.params.groupId
+        );
+
+      if (!group) {
+        return res.status(404).json({
+          message:
+            "Group not found."
+        });
+      }
+
+      const memberIndex =
+        group.members.findIndex(
+          (member) =>
+            String(
+              member.participantId
+            ) ===
+            String(
+              req.params.participantId
+            )
+        );
+
+      if (memberIndex === -1) {
+        return res.status(404).json({
+          message:
+            "Participant is not in this group."
+        });
+      }
+
+      group.members.splice(
+        memberIndex,
+        1
+      );
+
+      normalizeGroupMembers(
+        room
+      );
+
+      await room.save();
+
+      return res.json({
+        message:
+          "Participant removed from group.",
+        room
+      });
+    } catch (error) {
+      console.error(
+        "Remove participant error:",
+        error
+      );
+
+      return res.status(500).json({
+        message: "Server error."
+      });
+    }
+  }
+);
+
+router.delete(
+  "/:roomCode/groups/:groupId",
+  authenticateAdmin,
+  async (req, res) => {
+    try {
+      const room =
+        await Room.findOne({
+          roomCode:
+            req.params.roomCode
+        });
+
+      if (!room) {
+        return res.status(404).json({
+          message:
+            "Room not found."
+        });
+      }
+
+      const group =
+        room.groups.id(
+          req.params.groupId
+        );
+
+      if (!group) {
+        return res.status(404).json({
+          message:
+            "Group not found."
+        });
+      }
+
+      group.deleteOne();
+
+      normalizeGroupMembers(
+        room
+      );
+
+      await room.save();
+
+      return res.json({
+        message:
+          "Group deleted successfully.",
+        room
+      });
+    } catch (error) {
+      console.error(
+        "Delete group error:",
+        error
+      );
 
       return res.status(500).json({
         message: "Server error."
@@ -440,86 +1100,114 @@ router.post(
   authenticateAdmin,
   async (req, res) => {
     try {
-      const room = await Room.findOne({
-        roomCode: req.params.roomCode.toUpperCase()
-      });
+      const room =
+        await Room.findOne({
+          roomCode:
+            req.params.roomCode
+        });
 
       if (!room) {
         return res.status(404).json({
-          message: "Room not found."
+          message:
+            "Room not found."
         });
       }
 
-      if (room.matchmakingCompleted) {
+      if (
+        room.matchmakingCompleted
+      ) {
         return res.status(400).json({
-          message: "Matchmaking has already been completed."
+          message:
+            "Matchmaking has already been completed."
         });
       }
 
-      const requestedRound = Number(
-        req.body.roundNumber
-      );
+      const requestedRound =
+        Number(
+          req.body.roundNumber
+        );
 
       const roundNumber =
         requestedRound > 0
           ? requestedRound
           : room.currentRound + 1;
 
-      if (roundNumber > room.totalRounds) {
+      if (
+        roundNumber >
+        room.totalRounds
+      ) {
         return res.status(400).json({
-          message: "All rounds have already been started."
+          message:
+            "All conversation rounds are already complete."
         });
       }
 
-      const existingRound = room.rounds.find(
-        (round) =>
-          round.roundNumber === roundNumber
-      );
+      const previousRound =
+        room.rounds.find(
+          (round) =>
+            round.roundNumber ===
+            roundNumber - 1
+        );
+
+      if (
+        roundNumber > 1 &&
+        (
+          !previousRound ||
+          (
+            previousRound.status !==
+              "completed" &&
+            previousRound.status !==
+              "voting"
+          )
+        )
+      ) {
+        return res.status(400).json({
+          message:
+            "The previous round must be completed or in voting."
+        });
+      }
+
+      if (
+        roundNumber > 1 &&
+        previousRound.status ===
+          "voting"
+      ) {
+        previousRound.status =
+          "completed";
+      }
+
+      const existingRound =
+        room.rounds.find(
+          (round) =>
+            round.roundNumber ===
+            roundNumber
+        );
 
       if (existingRound) {
         if (
-          existingRound.status === "active" ||
-          existingRound.status === "voting"
+          existingRound.status ===
+            "active" ||
+          existingRound.status ===
+            "voting"
         ) {
           return res.json({
-            message: `Round ${roundNumber} is already active.`,
+            message:
+              `Round ${roundNumber} is already active.`,
             room
           });
         }
 
         return res.status(400).json({
-          message: "This round has already been completed."
+          message:
+            "This round has already been completed."
         });
       }
 
-      if (roundNumber > 1) {
-        const previousRound = room.rounds.find(
-          (round) =>
-            round.roundNumber === roundNumber - 1
+      const groups =
+        generateConversationGroups(
+          room.participants,
+          room
         );
-
-        if (
-          !previousRound ||
-          (
-            previousRound.status !== "completed" &&
-            previousRound.status !== "voting"
-          )
-        ) {
-          return res.status(400).json({
-            message:
-              "The previous round must be completed or in voting."
-          });
-        }
-
-        if (previousRound.status === "voting") {
-          previousRound.status = "completed";
-        }
-      }
-
-      const groups = generateConversationGroups(
-        room.participants,
-        room
-      );
 
       room.rounds.push({
         roundNumber,
@@ -528,17 +1216,151 @@ router.post(
         selections: []
       });
 
-      room.currentRound = roundNumber;
-      room.phase = "conversation";
+      room.currentRound =
+        roundNumber;
+
+      room.phase =
+        "conversation";
 
       await room.save();
 
       return res.json({
-        message: `Round ${roundNumber} started.`,
+        message:
+          `Round ${roundNumber} started.`,
         room
       });
     } catch (error) {
-      console.error("Start round error:", error);
+      console.error(
+        "Start round error:",
+        error
+      );
+
+      return res.status(500).json({
+        message: "Server error."
+      });
+    }
+  }
+);
+
+router.get(
+  "/:roomCode/participant/:participantId",
+  async (req, res) => {
+    try {
+      const room =
+        await Room.findOne({
+          roomCode:
+            req.params.roomCode,
+          active: true
+        });
+
+      if (!room) {
+        return res.status(404).json({
+          message:
+            "Room not found."
+        });
+      }
+
+      const participant =
+        getParticipant(
+          room,
+          req.params.participantId
+        );
+
+      if (!participant) {
+        return res.status(404).json({
+          message:
+            "Participant not found."
+        });
+      }
+
+      const currentRound =
+        room.rounds.find(
+          (round) =>
+            round.roundNumber ===
+            room.currentRound
+        );
+
+      let conversationGroup =
+        null;
+
+      let hasVoted = false;
+
+      if (currentRound) {
+        conversationGroup =
+          currentRound.groups.find(
+            (group) =>
+              group.members.some(
+                (member) =>
+                  String(
+                    member.participantId
+                  ) ===
+                  String(
+                    participant._id
+                  )
+              )
+          );
+
+        hasVoted =
+          currentRound.selections.some(
+            (selection) =>
+              String(
+                selection.participantId
+              ) ===
+              String(
+                participant._id
+              )
+          );
+      }
+
+      return res.json({
+        roomCode:
+          room.roomCode,
+
+        roomName:
+          room.name,
+
+        participantId:
+          String(
+            participant._id
+          ),
+
+        username:
+          participant.username,
+
+        currentRound:
+          room.currentRound,
+
+        totalRounds:
+          room.totalRounds,
+
+        phase:
+          room.phase,
+
+        roundStatus:
+          currentRound?.status ||
+          null,
+
+        hasVoted,
+
+        conversationGroup:
+          conversationGroup
+            ? {
+                groupNumber:
+                  conversationGroup.groupNumber,
+
+                members:
+                  conversationGroup.members
+              }
+            : null,
+
+        matchmakingCompleted:
+          room.matchmakingCompleted
+      });
+    } catch (error) {
+      console.error(
+        "Participant status error:",
+        error
+      );
 
       return res.status(500).json({
         message: "Server error."
@@ -551,115 +1373,155 @@ router.post(
   "/:roomCode/rounds/:roundNumber/vote",
   async (req, res) => {
     try {
-      const room = await Room.findOne({
-        roomCode: req.params.roomCode.toUpperCase()
-      });
+      const room =
+        await Room.findOne({
+          roomCode:
+            req.params.roomCode,
+          active: true
+        });
 
       if (!room) {
         return res.status(404).json({
-          message: "Room not found."
+          message:
+            "Room not found."
         });
       }
 
-      const roundNumber = Number(
-        req.params.roundNumber
-      );
+      const roundNumber =
+        Number(
+          req.params.roundNumber
+        );
 
-      const round = room.rounds.find(
-        (item) =>
-          item.roundNumber === roundNumber
-      );
+      const round =
+        room.rounds.find(
+          (item) =>
+            item.roundNumber ===
+            roundNumber
+        );
 
       if (!round) {
         return res.status(404).json({
-          message: "Round not found."
+          message:
+            "Round not found."
         });
       }
 
-      if (round.status !== "voting") {
+      if (
+        round.status !==
+        "voting"
+      ) {
         return res.status(400).json({
-          message: "Voting is not currently open."
+          message:
+            "Voting is not open for this round."
         });
       }
 
-      const participantId = String(
-        req.body.participantId || ""
-      );
+      const participantId =
+        String(
+          req.body.participantId ||
+            ""
+        );
 
-      const participant = room.participants.find(
-        (item) =>
-          String(item._id) === participantId
-      );
+      const participant =
+        getParticipant(
+          room,
+          participantId
+        );
 
       if (!participant) {
         return res.status(404).json({
-          message: "Participant not found."
+          message:
+            "Participant not found."
         });
       }
 
-      const selectedParticipants = Array.isArray(
-        req.body.selectedParticipants
-      )
-        ? req.body.selectedParticipants
-        : [];
-
-      const group = round.groups.find(
-        (currentGroup) =>
-          currentGroup.participants.some(
-            (item) =>
-              String(item.participantId) ===
-              participantId
-          )
-      );
+      const group =
+        round.groups.find(
+          (item) =>
+            item.members.some(
+              (member) =>
+                String(
+                  member.participantId
+                ) ===
+                participantId
+            )
+        );
 
       if (!group) {
         return res.status(400).json({
-          message: "Participant is not assigned to a group."
+          message:
+            "Participant is not assigned to a conversation group."
         });
       }
 
-      const validIds = new Set(
-        group.participants
-          .map((item) => String(item.participantId))
-          .filter((id) => id !== participantId)
-      );
+      const allowedIds =
+        group.members
+          .map(
+            (member) =>
+              String(
+                member.participantId
+              )
+          )
+          .filter(
+            (id) =>
+              id !== participantId
+          );
 
-      const cleanSelections = [
-        ...new Set(
-          selectedParticipants
-            .map((id) => String(id))
-            .filter((id) => validIds.has(id))
+      const requested =
+        Array.isArray(
+          req.body.selectedParticipants
         )
-      ];
+          ? req.body
+              .selectedParticipants
+          : [];
 
-      const existingSelectionIndex =
-        round.selections.findIndex(
+      const selectedParticipants =
+        [
+          ...new Set(
+            requested
+              .map((id) =>
+                String(id)
+              )
+              .filter((id) =>
+                allowedIds.includes(id)
+              )
+          )
+        ];
+
+      const existing =
+        round.selections.find(
           (selection) =>
-            String(selection.participantId) ===
+            String(
+              selection.participantId
+            ) ===
             participantId
         );
 
-      if (existingSelectionIndex >= 0) {
-        round.selections[
-          existingSelectionIndex
-        ].selectedParticipants = cleanSelections;
+      if (existing) {
+        existing.selectedParticipants =
+          selectedParticipants;
       } else {
         round.selections.push({
           participantId,
-          selectedParticipants: cleanSelections
+          selectedParticipants
         });
       }
 
-      room.phase = "voting";
+      round.status =
+        "voting";
 
       await room.save();
 
       return res.json({
-        message: "Vote saved successfully.",
-        selectedParticipants: cleanSelections
+        message:
+          "Selection saved privately.",
+        hasVoted: true
       });
     } catch (error) {
-      console.error("Vote error:", error);
+      console.error(
+        "Vote error:",
+        error
+      );
 
       return res.status(500).json({
         message: "Server error."
@@ -673,40 +1535,55 @@ router.post(
   authenticateAdmin,
   async (req, res) => {
     try {
-      const room = await Room.findOne({
-        roomCode: req.params.roomCode.toUpperCase()
-      });
+      const room =
+        await Room.findOne({
+          roomCode:
+            req.params.roomCode
+        });
 
       if (!room) {
         return res.status(404).json({
-          message: "Room not found."
+          message:
+            "Room not found."
         });
       }
 
-      const roundNumber = Number(
-        req.params.roundNumber
-      );
+      const roundNumber =
+        Number(
+          req.params.roundNumber
+        );
 
-      const round = room.rounds.find(
-        (item) =>
-          item.roundNumber === roundNumber
-      );
+      const round =
+        room.rounds.find(
+          (item) =>
+            item.roundNumber ===
+            roundNumber
+        );
 
       if (!round) {
         return res.status(404).json({
-          message: "Round not found."
+          message:
+            "Round not found."
         });
       }
 
-      if (round.status === "completed") {
-        return res.status(400).json({
-          message: "Round is already completed."
+      if (
+        round.status ===
+        "completed"
+      ) {
+        return res.json({
+          message:
+            `Round ${roundNumber} is already complete.`,
+          room
         });
       }
 
       if (round.status === "active") {
-        round.status = "voting";
-        room.phase = "voting";
+        round.status =
+          "voting";
+
+        room.phase =
+          "voting";
 
         await room.save();
 
@@ -717,27 +1594,39 @@ router.post(
         });
       }
 
-      if (round.status === "voting") {
-        round.status = "completed";
-
-        room.phase =
-          roundNumber < room.totalRounds
-            ? "conversation"
-            : "completed";
-
-        await room.save();
-
-        return res.json({
-          message: `Round ${roundNumber} completed.`,
-          room
+      if (round.status !== "voting") {
+        return res.status(400).json({
+          message:
+            "Invalid round status."
         });
       }
 
-      return res.status(400).json({
-        message: "Invalid round status."
+      round.status =
+        "completed";
+
+      if (
+        roundNumber <
+        room.totalRounds
+      ) {
+        room.phase =
+          "conversation";
+      } else {
+        room.phase =
+          "completed";
+      }
+
+      await room.save();
+
+      return res.json({
+        message:
+          `Round ${roundNumber} completed.`,
+        room
       });
     } catch (error) {
-      console.error("Complete round error:", error);
+      console.error(
+        "Complete round error:",
+        error
+      );
 
       return res.status(500).json({
         message: "Server error."
@@ -747,59 +1636,266 @@ router.post(
 );
 
 router.post(
-  "/:roomCode/finalize",
+  "/:roomCode/matchmaking/finalize",
   authenticateAdmin,
   async (req, res) => {
     try {
-      const room = await Room.findOne({
-        roomCode: req.params.roomCode.toUpperCase()
-      });
+      const room =
+        await Room.findOne({
+          roomCode:
+            req.params.roomCode
+        });
 
       if (!room) {
         return res.status(404).json({
-          message: "Room not found."
+          message:
+            "Room not found."
         });
       }
 
-      if (room.matchmakingCompleted) {
+      if (
+        room.matchmakingCompleted
+      ) {
         return res.status(400).json({
-          message: "Matchmaking is already completed."
+          message:
+            "Matchmaking has already been completed."
         });
       }
 
-      if (room.rounds.length !== room.totalRounds) {
+      if (
+        room.rounds.length !==
+        room.totalRounds
+      ) {
         return res.status(400).json({
-          message: "All rounds must be started first."
+          message:
+            "All conversation rounds must be completed first."
         });
       }
 
-      const incompleteRound = room.rounds.find(
-        (round) =>
-          round.status !== "completed"
-      );
+      const incompleteRound =
+        room.rounds.find(
+          (round) =>
+            round.status !==
+            "completed"
+        );
 
       if (incompleteRound) {
         return res.status(400).json({
           message:
-            `Round ${incompleteRound.roundNumber} must be completed first.`
+            `Round ${incompleteRound.roundNumber} has not been completed.`
         });
       }
 
-      room.finalGroups = buildFinalGroups(room);
-      room.matches = buildAdminMatches(room);
-      room.matchmakingCompleted = true;
-      room.phase = "completed";
+      room.finalGroups =
+        buildFinalGroups(room);
+
+      room.matches =
+        buildAdminMatches(room);
+
+      room.matchmakingCompleted =
+        true;
+
+      room.phase =
+        "completed";
 
       await room.save();
 
       return res.json({
-        message: "Matchmaking completed.",
-        finalGroups: room.finalGroups,
-        matches: room.matches,
+        message:
+          "Matchmaking completed.",
+        finalGroups:
+          room.finalGroups,
+        matches:
+          room.matches
+      });
+    } catch (error) {
+      console.error(
+        "Finalize matchmaking error:",
+        error
+      );
+
+      return res.status(500).json({
+        message: "Server error."
+      });
+    }
+  }
+);
+
+router.get(
+  "/:roomCode/matchmaking",
+  authenticateAdmin,
+  async (req, res) => {
+    try {
+      const room =
+        await Room.findOne({
+          roomCode:
+            req.params.roomCode
+        });
+
+      if (!room) {
+        return res.status(404).json({
+          message:
+            "Room not found."
+        });
+      }
+
+      const selections = [];
+
+      for (
+        const round of
+        room.rounds || []
+      ) {
+        for (
+          const selection of
+          round.selections || []
+        ) {
+          const participant =
+            getParticipant(
+              room,
+              selection.participantId
+            );
+
+          const selected =
+            (
+              selection.selectedParticipants ||
+              []
+            ).map(
+              (selectedId) => {
+                const selectedParticipant =
+                  getParticipant(
+                    room,
+                    selectedId
+                  );
+
+                return {
+                  participantId:
+                    String(
+                      selectedId
+                    ),
+                  username:
+                    selectedParticipant
+                      ?.username ||
+                    "Unknown"
+                };
+              }
+            );
+
+          selections.push({
+            roundNumber:
+              round.roundNumber,
+
+            participantId:
+              String(
+                selection.participantId
+              ),
+
+            username:
+              participant?.username ||
+              "Unknown",
+
+            selectedParticipants:
+              selected
+          });
+        }
+      }
+
+      const mutualMatches =
+        getMutualPairs(room).map(
+          (pair) => {
+            const first =
+              getParticipant(
+                room,
+                pair.a
+              );
+
+            const second =
+              getParticipant(
+                room,
+                pair.b
+              );
+
+            return {
+              participants: [
+                pair.a,
+                pair.b
+              ],
+
+              usernames: [
+                first?.username ||
+                  "Unknown",
+                second?.username ||
+                  "Unknown"
+              ]
+            };
+          }
+        );
+
+      return res.json({
+        roomCode:
+          room.roomCode,
+
+        matchmakingCompleted:
+          room.matchmakingCompleted,
+
+        selections,
+
+        mutualMatches,
+
+        finalGroups:
+          room.finalGroups || [],
+
+        matches:
+          room.matches || []
+      });
+    } catch (error) {
+      console.error(
+        "Get matchmaking error:",
+        error
+      );
+
+      return res.status(500).json({
+        message: "Server error."
+      });
+    }
+  }
+);
+
+router.delete(
+  "/:roomCode",
+  authenticateAdmin,
+  async (req, res) => {
+    try {
+      const room =
+        await Room.findOneAndUpdate(
+          {
+            roomCode:
+              req.params.roomCode
+          },
+          {
+            active: false
+          },
+          {
+            new: true
+          }
+        );
+
+      if (!room) {
+        return res.status(404).json({
+          message:
+            "Room not found."
+        });
+      }
+
+      return res.json({
+        message:
+          "Room deleted successfully.",
         room
       });
     } catch (error) {
-      console.error("Finalize matchmaking error:", error);
+      console.error(
+        "Delete room error:",
+        error
+      );
 
       return res.status(500).json({
         message: "Server error."
