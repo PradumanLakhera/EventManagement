@@ -9,27 +9,32 @@ async function createAdmin() {
     await mongoose.connect(process.env.MONGO_URI);
 
     const username = "Celisha";
-    const password = "ilovepraduman@123";
+    const password = process.env.ADMIN_PASSWORD;
 
-    const existingAdmin = await Admin.findOne({ username });
-
-    if (existingAdmin) {
-      console.log("Admin already exists.");
-      process.exit(0);
+    if (!password) {
+      throw new Error("ADMIN_PASSWORD is missing.");
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    await Admin.create({
-      username,
-      password: hashedPassword,
-      role: "admin"
-    });
+    await Admin.findOneAndUpdate(
+      { username },
+      {
+        username,
+        password: hashedPassword,
+        role: "admin"
+      },
+      {
+        upsert: true,
+        new: true
+      }
+    );
 
-    console.log("Admin created successfully.");
-    process.exit(0);
+    console.log("Admin account updated successfully.");
+
+    await mongoose.disconnect();
   } catch (error) {
-    console.error("Error creating admin:", error);
+    console.error("Error:", error);
     process.exit(1);
   }
 }
