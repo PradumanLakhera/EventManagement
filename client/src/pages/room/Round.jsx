@@ -138,10 +138,7 @@ function Round() {
           return;
         }
 
-        if (
-          currentRound >= 2 &&
-          data.hasVoted
-        ) {
+        if (data.hasVoted) {
           navigate(
             `/room/${roomCode}/registered`,
             {
@@ -230,10 +227,7 @@ function Round() {
         return;
       }
 
-      if (
-        currentRound >= 2 &&
-        data.hasVoted
-      ) {
+      if (data.hasVoted) {
         navigate(
           `/room/${roomCode}/registered`,
           {
@@ -291,7 +285,7 @@ function Round() {
   const submitVotes = async () => {
     if (
       submitting ||
-      currentRound < 2
+      !isVoting
     ) {
       return;
     }
@@ -387,7 +381,10 @@ function Round() {
     );
 
   const isConversationOnly =
-    currentRound === 1;
+    state?.roundStatus === "active";
+
+  const isVoting =
+    state?.roundStatus === "voting";
 
   const progress =
     Math.min(
