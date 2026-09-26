@@ -865,8 +865,8 @@ function AdminDashboard() {
     !selectedRoom.matchmakingCompleted &&
     !currentRoundActive &&
     !allRoundsComplete &&
-    selectedRoom.participants
-      ?.length >= 2;
+    selectedRoom.participants;
+    
 
   const canCompleteRound =
     selectedRoom &&
