@@ -1285,6 +1285,9 @@ router.get(
 
       let hasVoted = false;
 
+      let selectedParticipants =
+        [];
+
       if (currentRound) {
         conversationGroup =
           currentRound.groups.find(
@@ -1300,8 +1303,8 @@ router.get(
               )
           );
 
-        hasVoted =
-          currentRound.selections.some(
+        const existingSelection =
+          currentRound.selections.find(
             (selection) =>
               String(
                 selection.participantId
@@ -1310,6 +1313,18 @@ router.get(
                 participant._id
               )
           );
+
+        if (existingSelection) {
+          hasVoted = true;
+
+          selectedParticipants =
+            (
+              existingSelection.selectedParticipants ||
+              []
+            ).map((id) =>
+              String(id)
+            );
+        }
       }
 
       return res.json({
@@ -1342,6 +1357,8 @@ router.get(
 
         hasVoted,
 
+        selectedParticipants,
+
         conversationGroup:
           conversationGroup
             ? {
@@ -1363,7 +1380,9 @@ router.get(
       );
 
       return res.status(500).json({
-        message: "Server error."
+        message:
+          error.message ||
+          "Server error."
       });
     }
   }

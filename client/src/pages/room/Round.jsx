@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState
 } from "react";
 
@@ -65,7 +66,10 @@ function Round() {
   const [refreshing, setRefreshing] =
     useState(false);
 
-  useEffect(() => {
+  const initializedSelection =
+    useRef(false);
+
+  const loadState = async () => {
     if (!participantId) {
       navigate(
         `/room/${roomCode}`,
@@ -76,203 +80,6 @@ function Round() {
 
       return;
     }
-
-    let cancelled = false;
-
-    const loadState = async () => {
-      try {
-        const response =
-          await fetch(
-            `${API}/rooms/${roomCode}/participant/${participantId}`
-          );
-
-        const data =
-          await response.json();
-
-        if (cancelled) {
-          return;
-        }
-
-        if (!response.ok) {
-          setError(
-            data.message ||
-              "Unable to load the round."
-          );
-
-          return;
-        }
-
-        localStorage.setItem(
-          "meetafriendParticipant",
-          JSON.stringify({
-            participantId:
-              data.participantId,
-            username:
-              data.username,
-            roomCode:
-              data.roomCode,
-            roomName:
-              data.roomName
-          })
-        );
-
-        if (
-          Number(
-            data.currentRound
-          ) !== currentRound
-        ) {
-          navigate(
-            `/room/${roomCode}/registered`,
-            {
-              state: {
-                participantId:
-                  data.participantId,
-                username:
-                  data.username,
-                roomName:
-                  data.roomName
-              },
-              replace: true
-            }
-          );
-
-          return;
-        }
-
-        if (
-          data.roundStatus ===
-          "completed"
-        ) {
-          navigate(
-            `/room/${roomCode}/registered`,
-            {
-              state: {
-                participantId:
-                  data.participantId,
-                username:
-                  data.username,
-                roomName:
-                  data.roomName
-              },
-              replace: true
-            }
-          );
-
-          return;
-        }
-
-        setState(data);
-      } catch {
-        if (!cancelled) {
-          setError(
-            "Unable to connect to the server."
-          );
-        }
-      }
-    };
-
-    loadState();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    roomCode,
-    participantId,
-    currentRound,
-    navigate
-  ]);
-
-  useEffect(() => {
-    if (!participantId) {
-      return;
-    }
-
-    const interval =
-      setInterval(async () => {
-        try {
-          const response =
-            await fetch(
-              `${API}/rooms/${roomCode}/participant/${participantId}`
-            );
-
-          const data =
-            await response.json();
-
-          if (!response.ok) {
-            return;
-          }
-
-          if (
-            Number(
-              data.currentRound
-            ) !== currentRound
-          ) {
-            navigate(
-              `/room/${roomCode}/registered`,
-              {
-                state: {
-                  participantId:
-                    data.participantId,
-                  username:
-                    data.username,
-                  roomName:
-                    data.roomName
-                },
-                replace: true
-              }
-            );
-
-            return;
-          }
-
-          if (
-            data.roundStatus ===
-            "completed"
-          ) {
-            navigate(
-              `/room/${roomCode}/registered`,
-              {
-                state: {
-                  participantId:
-                    data.participantId,
-                  username:
-                    data.username,
-                  roomName:
-                    data.roomName
-                },
-                replace: true
-              }
-            );
-
-            return;
-          }
-
-          setState(data);
-        } catch {
-        }
-      }, 2000);
-
-    return () => {
-      clearInterval(interval);
-    };
-  }, [
-    roomCode,
-    participantId,
-    currentRound,
-    navigate
-  ]);
-
-  const refreshState = async () => {
-    if (
-      !participantId ||
-      refreshing
-    ) {
-      return;
-    }
-
-    setRefreshing(true);
-    setError("");
 
     try {
       const response =
@@ -286,11 +93,25 @@ function Round() {
       if (!response.ok) {
         setError(
           data.message ||
-            "Unable to refresh the round."
+            "Unable to load the round."
         );
 
         return;
       }
+
+      localStorage.setItem(
+        "meetafriendParticipant",
+        JSON.stringify({
+          participantId:
+            data.participantId,
+          username:
+            data.username,
+          roomCode:
+            data.roomCode,
+          roomName:
+            data.roomName
+        })
+      );
 
       if (
         Number(
@@ -337,19 +158,79 @@ function Round() {
         return;
       }
 
+      if (
+        !initializedSelection.current
+      ) {
+        setSelected(
+          Array.isArray(
+            data.selectedParticipants
+          )
+            ? data.selectedParticipants
+            : []
+        );
+
+        initializedSelection.current =
+          true;
+      }
+
       setState(data);
     } catch {
       setError(
         "Unable to connect to the server."
       );
-    } finally {
-      setRefreshing(false);
     }
+  };
+
+  useEffect(() => {
+    initializedSelection.current =
+      false;
+
+    setState(null);
+    setSelected([]);
+    setError("");
+
+    loadState();
+
+    const interval =
+      window.setInterval(
+        loadState,
+        2000
+      );
+
+    return () => {
+      window.clearInterval(
+        interval
+      );
+    };
+  }, [
+    roomCode,
+    participantId,
+    currentRound
+  ]);
+
+  const refreshState = async () => {
+    if (
+      !participantId ||
+      refreshing
+    ) {
+      return;
+    }
+
+    setRefreshing(true);
+    setError("");
+
+    await loadState();
+
+    setRefreshing(false);
   };
 
   const toggleParticipant = (
     participant
   ) => {
+    if (!isVoting) {
+      return;
+    }
+
     const id =
       String(
         participant.participantId
@@ -377,9 +258,7 @@ function Round() {
   const submitVotes = async () => {
     if (
       submitting ||
-      !state ||
-      state.roundStatus !==
-        "voting"
+      !isVoting
     ) {
       return;
     }
@@ -417,16 +296,13 @@ function Round() {
         return;
       }
 
-      navigate(
-        `/room/${roomCode}/registered`,
-        {
-          state: {
-            participantId,
-            username,
-            roomName
-          },
-          replace: true
-        }
+      setState(
+        (current) => ({
+          ...current,
+          hasVoted: true,
+          selectedParticipants:
+            selected
+        })
       );
     } catch {
       setError(
@@ -475,18 +351,20 @@ function Round() {
         String(participantId)
     );
 
-  const isVotingOpen =
-    state.roundStatus ===
-    "voting";
-
-  const isConversationOpen =
+  const isConversation =
     state.roundStatus ===
     "active";
+
+  const isVoting =
+    state.roundStatus ===
+    "voting";
 
   const progress =
     Math.min(
       100,
-      (currentRound / 5) * 100
+      (currentRound /
+        state.totalRounds) *
+        100
     );
 
   return (
@@ -512,7 +390,9 @@ function Round() {
 
           <div className="round-header-number">
             {currentRound}
-            <small>/5</small>
+            <small>
+              /{state.totalRounds}
+            </small>
           </div>
         </header>
 
@@ -524,7 +404,8 @@ function Round() {
               </span>
 
               <strong>
-                Round {currentRound} of 5
+                Round {currentRound} of{" "}
+                {state.totalRounds}
               </strong>
             </div>
 
@@ -539,45 +420,55 @@ function Round() {
             </div>
 
             <div className="round-progress-dots">
-              {[1, 2, 3, 4, 5].map(
-                (number) => (
-                  <div
-                    key={number}
-                    className={
-                      number <
+              {Array.from(
+                {
+                  length:
+                    state.totalRounds
+                }
+              ).map(
+                (_, index) => {
+                  const number =
+                    index + 1;
+
+                  return (
+                    <div
+                      key={number}
+                      className={
+                        number <
+                        currentRound
+                          ? "round-dot completed"
+                          : number ===
+                            currentRound
+                          ? "round-dot active"
+                          : "round-dot"
+                      }
+                    >
+                      {number <
                       currentRound
-                        ? "round-dot completed"
-                        : number ===
-                          currentRound
-                        ? "round-dot active"
-                        : "round-dot"
-                    }
-                  >
-                    {number <
-                    currentRound
-                      ? "✓"
-                      : number}
-                  </div>
-                )
+                        ? "✓"
+                        : number}
+                    </div>
+                  );
+                }
               )}
             </div>
           </div>
 
           <div className="round-title">
             <span className="round-eyebrow">
-              {isConversationOpen
+              {isConversation
                 ? "CONVERSATION ROUND"
-                : "VOTING ROUND"}
+                : "CONNECTION ROUND"}
             </span>
 
             <h1>
-              {isConversationOpen
+              {isConversation
                 ? "Meet your group."
                 : "Who would you like to connect with?"}
             </h1>
 
             <p>
-              {isConversationOpen
+              {isConversation
                 ? "Take a moment to introduce yourselves, talk and find something you have in common."
                 : "Choose one or more people from your group you'd like to connect with."}
             </p>
@@ -627,11 +518,6 @@ function Round() {
                       id
                     );
 
-                  const canSelect =
-                    isVotingOpen &&
-                    !isYou &&
-                    !submitting;
-
                   return (
                     <div
                       key={id}
@@ -640,13 +526,15 @@ function Round() {
                           ? "round-member selected"
                           : isYou
                           ? "round-member you"
-                          : canSelect
+                          : isVoting
                           ? "round-member clickable"
                           : "round-member"
                       }
                       onClick={() => {
                         if (
-                          canSelect
+                          isVoting &&
+                          !isYou &&
+                          !submitting
                         ) {
                           toggleParticipant(
                             member
@@ -677,7 +565,7 @@ function Round() {
                           <span>
                             Selected
                           </span>
-                        ) : isVotingOpen ? (
+                        ) : isVoting ? (
                           <span>
                             Tap to select
                           </span>
@@ -688,7 +576,7 @@ function Round() {
                         )}
                       </div>
 
-                      {isVotingOpen &&
+                      {isVoting &&
                         !isYou && (
                           <div
                             className={
@@ -709,7 +597,7 @@ function Round() {
             </div>
           </div>
 
-          {isConversationOpen ? (
+          {isConversation ? (
             <>
               <div className="round-conversation-card">
                 <div className="round-conversation-icon">
@@ -742,7 +630,7 @@ function Round() {
                   <span>
                     Voting will appear
                     automatically when the
-                    organizer completes the
+                    organizer finishes the
                     round.
                   </span>
                 </div>
@@ -792,10 +680,17 @@ function Round() {
                 </div>
               )}
 
+              {state.hasVoted && (
+                <div className="round-hint">
+                  You can change your
+                  selections while voting
+                  is open.
+                </div>
+              )}
+
               {error && (
                 <div className="round-error">
                   <span>!</span>
-
                   {error}
                 </div>
               )}
@@ -815,6 +710,8 @@ function Round() {
                 <span>
                   {submitting
                     ? "Saving..."
+                    : state.hasVoted
+                    ? "Update selections"
                     : "Submit selections"}
                 </span>
 
@@ -837,7 +734,7 @@ function Round() {
             </span>
 
             <span>
-              {isConversationOpen
+              {isConversation
                 ? "CONVERSATION"
                 : "VOTING OPEN"}
             </span>

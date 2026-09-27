@@ -1,14 +1,29 @@
-import { useEffect, useState } from "react";
-import { QRCodeSVG } from "qrcode.react";
+import {
+  useEffect,
+  useState
+} from "react";
+
+import {
+  QRCodeSVG
+} from "qrcode.react";
+
 import "./admindashboard.css";
 
 function AdminDashboard() {
-  const [rooms, setRooms] = useState([]);
-  const [selectedRoom, setSelectedRoom] = useState(null);
-  const [selectedGroupId, setSelectedGroupId] = useState(null);
+  const [rooms, setRooms] =
+    useState([]);
 
-  const [roomName, setRoomName] = useState("");
-  const [groupName, setGroupName] = useState("");
+  const [selectedRoom, setSelectedRoom] =
+    useState(null);
+
+  const [selectedGroupId, setSelectedGroupId] =
+    useState(null);
+
+  const [roomName, setRoomName] =
+    useState("");
+
+  const [groupName, setGroupName] =
+    useState("");
 
   const [showCreate, setShowCreate] =
     useState(false);
@@ -16,11 +31,18 @@ function AdminDashboard() {
   const [showCreateGroup, setShowCreateGroup] =
     useState(false);
 
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
+  const [error, setError] =
+    useState("");
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [creating, setCreating] =
+    useState(false);
+
   const [creatingGroup, setCreatingGroup] =
     useState(false);
+
   const [actionLoading, setActionLoading] =
     useState(false);
 
@@ -28,7 +50,7 @@ function AdminDashboard() {
     useState(null);
 
   const [selectedVoteRound, setSelectedVoteRound] =
-    useState(2);
+    useState(1);
 
   const [matchmakingLoading, setMatchmakingLoading] =
     useState(false);
@@ -59,12 +81,14 @@ function AdminDashboard() {
 
   const loadRooms = async () => {
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/rooms`,
-        {
-          headers: authHeaders
-        }
-      );
+      const response =
+        await fetch(
+          `${import.meta.env.VITE_API_URL}/api/rooms`,
+          {
+            headers:
+              authHeaders
+          }
+        );
 
       const data =
         await response.json();
@@ -74,10 +98,13 @@ function AdminDashboard() {
           data.message ||
             "Failed to load rooms."
         );
+
         return;
       }
 
-      setRooms(data.rooms || []);
+      setRooms(
+        data.rooms || []
+      );
     } catch {
       setError(
         "Could not connect to the server."
@@ -87,14 +114,18 @@ function AdminDashboard() {
     }
   };
 
-  const loadRoom = async (roomCode) => {
+  const loadRoom = async (
+    roomCode
+  ) => {
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/rooms/${roomCode}/participants`,
-        {
-          headers: authHeaders
-        }
-      );
+      const response =
+        await fetch(
+          `${import.meta.env.VITE_API_URL}/api/rooms/${roomCode}/participants`,
+          {
+            headers:
+              authHeaders
+          }
+        );
 
       const data =
         await response.json();
@@ -104,6 +135,7 @@ function AdminDashboard() {
           data.message ||
             "Failed to load room."
         );
+
         return null;
       }
 
@@ -117,573 +149,10 @@ function AdminDashboard() {
     }
   };
 
-  const refreshSelectedRoom =
-    async () => {
-      if (!selectedRoom) return;
-
-      const room =
-        await loadRoom(
-          selectedRoom.roomCode
-        );
-
-      if (!room) return;
-
-      setSelectedRoom(room);
-
-      setRooms(
-        (currentRooms) =>
-          currentRooms.map(
-            (item) =>
-              item.roomCode ===
-              room.roomCode
-                ? {
-                    ...item,
-                    name: room.name,
-                    participants:
-                      room.participants,
-                    groups:
-                      room.groups,
-                    participantCount:
-                      room.participants
-                        .length
-                  }
-                : item
-          )
-      );
-
-      setSelectedVoteRound(
-        Math.max(
-          2,
-          Number(room.currentRound) || 2
-        )
-      );
-
-      await loadMatchmaking(
-        room.roomCode
-      );
-    };
-
-  const openRoom = async (room) => {
-    setError("");
-    setSelectedGroupId(null);
-    setMatchmaking(null);
-
-    const loadedRoom =
-      await loadRoom(
-        room.roomCode
-      );
-
-    if (!loadedRoom) return;
-
-    setSelectedRoom(
-      loadedRoom
-    );
-
-    setSelectedVoteRound(
-      Math.max(
-        2,
-        Number(loadedRoom.currentRound) || 2
-      )
-    );
-
-    await loadMatchmaking(
-      loadedRoom.roomCode
-    );
-  };
-
-  const createRoom = async () => {
-    if (!roomName.trim()) {
-      setError(
-        "Enter a room name."
-      );
-      return;
-    }
-
-    setCreating(true);
-    setError("");
-
-    try {
-      const response =
-        await fetch(
-          `${import.meta.env.VITE_API_URL}/api/rooms`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-              ...authHeaders
-            },
-            body: JSON.stringify({
-              name: roomName.trim(),
-              totalRounds: 5
-            })
-          }
-        );
-
-      const data =
-        await response.json();
-
-      if (!response.ok) {
-        setError(
-          data.message ||
-            "Failed to create room."
-        );
-        return;
-      }
-
-      setRoomName("");
-      setShowCreate(false);
-
-      await loadRooms();
-
-      const loadedRoom =
-        await loadRoom(
-          data.room.roomCode
-        );
-
-      if (loadedRoom) {
-        setSelectedRoom(
-          loadedRoom
-        );
-      }
-    } catch {
-      setError(
-        "Could not connect to the server."
-      );
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const createGroup = async () => {
-    if (!selectedRoom) return;
-
-    if (!groupName.trim()) {
-      setError(
-        "Enter a group name."
-      );
-      return;
-    }
-
-    setCreatingGroup(true);
-    setError("");
-
-    try {
-      const response =
-        await fetch(
-          `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/groups`,  
-          {
-            method: "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-              ...authHeaders
-            },
-            body: JSON.stringify({
-              name:
-                groupName.trim()
-            })
-          }
-        );
-
-      const data =
-        await response.json();
-
-      if (!response.ok) {
-        setError(
-          data.message ||
-            "Failed to create group."
-        );
-        return;
-      }
-
-      setGroupName("");
-      setShowCreateGroup(false);
-
-      setSelectedRoom(
-        data.room
-      );
-    } catch {
-      setError(
-        "Could not connect to the server."
-      );
-    } finally {
-      setCreatingGroup(false);
-    }
-  };
-
-  const addUserToGroup =
-    async (
-      groupId,
-      participantId
-    ) => {
-      if (
-        !selectedRoom ||
-        actionLoading
-      ) {
-        return;
-      }
-
-      setActionLoading(true);
-      setError("");
-
-      try {
-        const response =
-          await fetch(
-            `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/groups/${groupId}/members`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type":
-                  "application/json",
-                ...authHeaders
-              },
-              body: JSON.stringify({
-                participantId
-              })
-            }
-          );
-
-        const data =
-          await response.json();
-
-        if (!response.ok) {
-          setError(
-            data.message ||
-              "Failed to add user."
-          );
-          return;
-        }
-
-        setSelectedGroupId(
-          null
-        );
-
-        setSelectedRoom(
-          data.room
-        );
-      } catch {
-        setError(
-          "Could not connect to the server."
-        );
-      } finally {
-        setActionLoading(false);
-      }
-    };
-
-  const removeUserFromGroup =
-    async (
-      groupId,
-      participantId
-    ) => {
-      if (
-        !selectedRoom ||
-        actionLoading
-      ) {
-        return;
-      }
-
-      setActionLoading(true);
-      setError("");
-
-      try {
-        const response =
-          await fetch(
-            `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/groups/${groupId}/members/${participantId}`,
-            {
-              method: "DELETE",
-              headers:
-                authHeaders
-            }
-          );
-
-        const data =
-          await response.json();
-
-        if (!response.ok) {
-          setError(
-            data.message ||
-              "Failed to remove user."
-          );
-          return;
-        }
-
-        setSelectedRoom(
-          data.room
-        );
-      } catch {
-        setError(
-          "Could not connect to the server."
-        );
-      } finally {
-        setActionLoading(false);
-      }
-    };
-
-  const closeConfirmModal =
-    () => {
-      setConfirmModal({
-        open: false,
-        title: "",
-        message: "",
-        action: null
-      });
-    };
-
-  const deleteGroup =
-    (groupId) => {
-      if (
-        !selectedRoom ||
-        actionLoading
-      ) {
-        return;
-      }
-
-      setConfirmModal({
-        open: true,
-        title: "Delete group?",
-        message:
-          "All participants will be removed from this group. They can be assigned to another group later.",
-        action: () =>
-          performDeleteGroup(
-            groupId
-          )
-      });
-    };
-
-  const performDeleteGroup =
-    async (groupId) => {
-      closeConfirmModal();
-
-      if (
-        !selectedRoom ||
-        actionLoading
-      ) {
-        return;
-      }
-
-      setActionLoading(true);
-      setError("");
-
-      try {
-        const response =
-          await fetch(
-            `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/groups/${groupId}`,
-            {
-              method: "DELETE",
-              headers:
-                authHeaders
-            }
-          );
-
-        const data =
-          await response.json();
-
-        if (!response.ok) {
-          setError(
-            data.message ||
-              "Failed to delete group."
-          );
-          return;
-        }
-
-        setSelectedGroupId(
-          null
-        );
-
-        setSelectedRoom(
-          data.room
-        );
-      } catch {
-        setError(
-          "Could not connect to the server."
-        );
-      } finally {
-        setActionLoading(false);
-      }
-    };
-
-  const deleteRoom =
-    (roomCode) => {
-      setConfirmModal({
-        open: true,
-        title: "Delete room?",
-        message:
-          "This will remove the room from your active rooms. Participants will no longer be able to join it.",
-        action: () =>
-          performDeleteRoom(
-            roomCode
-          )
-      });
-    };
-
-  const performDeleteRoom =
-    async (roomCode) => {
-      closeConfirmModal();
-      setError("");
-
-      try {
-        const response =
-          await fetch(
-            `${import.meta.env.VITE_API_URL}/api/rooms/${roomCode}`,
-            {
-              method: "DELETE",
-              headers:
-                authHeaders
-            }
-          );
-
-        const data =
-          await response.json();
-
-        if (!response.ok) {
-          setError(
-            data.message ||
-              "Failed to delete room."
-          );
-          return;
-        }
-
-        setRooms(
-          (currentRooms) =>
-            currentRooms.filter(
-              (room) =>
-                room.roomCode !==
-                roomCode
-            )
-        );
-
-        if (
-          selectedRoom?.roomCode ===
-          roomCode
-        ) {
-          setSelectedRoom(
-            null
-          );
-          setSelectedGroupId(
-            null
-          );
-          setMatchmaking(
-            null
-          );
-        }
-      } catch {
-        setError(
-          "Could not connect to the server."
-        );
-      }
-    };
-
-  const startRound = async () => {
-    if (
-      !selectedRoom ||
-      roundActionLoading
-    ) {
-      return;
-    }
-
-    const nextRound =
-      Number(
-        selectedRoom.currentRound
-      ) + 1;
-
-    setRoundActionLoading(true);
-    setError("");
-
-    try {
-      const response =
-        await fetch(
-          `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/rounds/start`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type":
-                "application/json",
-              ...authHeaders
-            },
-            body: JSON.stringify({
-              roundNumber:
-                nextRound
-            })
-          }
-        );
-
-      const data =
-        await response.json();
-
-      if (!response.ok) {
-        setError(
-          data.message ||
-            "Failed to start round."
-        );
-        return;
-      }
-
-      setSelectedRoom(
-        data.room
-      );
-    } catch {
-      setError(
-        "Could not connect to the server."
-      );
-    } finally {
-      setRoundActionLoading(
-        false
-      );
-    }
-  };
-
-  const completeRound =
-    async () => {
-      if (
-        !selectedRoom ||
-        roundActionLoading ||
-        !selectedRoom.currentRound
-      ) {
-        return;
-      }
-
-      setRoundActionLoading(true);
-      setError("");
-
-      try {
-        const response =
-          await fetch(
-            `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/rounds/${selectedRoom.currentRound}/complete`,
-            {
-              method: "POST",
-              headers:
-                authHeaders
-            }
-          );
-
-        const data =
-          await response.json();
-
-        if (!response.ok) {
-          setError(
-            data.message ||
-              "Failed to complete round."
-          );
-          return;
-        }
-
-        setSelectedRoom(
-          data.room
-        );
-      } catch {
-        setError(
-          "Could not connect to the server."
-        );
-      } finally {
-        setRoundActionLoading(
-          false
-        );
-      }
-    };
-
   const loadMatchmaking =
-    async (roomCode) => {
+    async (
+      roomCode
+    ) => {
       setMatchmakingLoading(
         true
       );
@@ -706,6 +175,7 @@ function AdminDashboard() {
             data.message ||
               "Failed to load matchmaking results."
           );
+
           return;
         }
 
@@ -723,6 +193,706 @@ function AdminDashboard() {
       }
     };
 
+  const refreshSelectedRoom =
+    async () => {
+      if (!selectedRoom) {
+        return;
+      }
+
+      const room =
+        await loadRoom(
+          selectedRoom.roomCode
+        );
+
+      if (!room) {
+        return;
+      }
+
+      setSelectedRoom(
+        room
+      );
+
+      setRooms(
+        currentRooms =>
+          currentRooms.map(
+            item =>
+              item.roomCode ===
+              room.roomCode
+                ? {
+                    ...item,
+                    name:
+                      room.name,
+                    participants:
+                      room.participants,
+                    groups:
+                      room.groups,
+                    participantCount:
+                      room
+                        .participants
+                        ?.length ||
+                      0
+                  }
+                : item
+          )
+      );
+
+      setSelectedVoteRound(
+        Math.max(
+          1,
+          Number(
+            room.currentRound
+          ) || 1
+        )
+      );
+
+      await loadMatchmaking(
+        room.roomCode
+      );
+    };
+
+  const openRoom =
+    async (
+      room
+    ) => {
+      setError("");
+      setSelectedGroupId(
+        null
+      );
+      setMatchmaking(
+        null
+      );
+
+      const loadedRoom =
+        await loadRoom(
+          room.roomCode
+        );
+
+      if (!loadedRoom) {
+        return;
+      }
+
+      setSelectedRoom(
+        loadedRoom
+      );
+
+      setSelectedVoteRound(
+        Math.max(
+          1,
+          Number(
+            loadedRoom.currentRound
+          ) || 1
+        )
+      );
+
+      await loadMatchmaking(
+        loadedRoom.roomCode
+      );
+    };
+
+  const createRoom =
+    async () => {
+      if (!roomName.trim()) {
+        setError(
+          "Enter a room name."
+        );
+
+        return;
+      }
+
+      setCreating(true);
+      setError("");
+
+      try {
+        const response =
+          await fetch(
+            `${import.meta.env.VITE_API_URL}/api/rooms`,
+            {
+              method:
+                "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+                ...authHeaders
+              },
+
+              body:
+                JSON.stringify({
+                  name:
+                    roomName.trim(),
+                  totalRounds: 5
+                })
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          setError(
+            data.message ||
+              "Failed to create room."
+          );
+
+          return;
+        }
+
+        setRoomName("");
+        setShowCreate(false);
+
+        await loadRooms();
+
+        const loadedRoom =
+          await loadRoom(
+            data.room.roomCode
+          );
+
+        if (loadedRoom) {
+          setSelectedRoom(
+            loadedRoom
+          );
+
+          setSelectedVoteRound(
+            1
+          );
+        }
+      } catch {
+        setError(
+          "Could not connect to the server."
+        );
+      } finally {
+        setCreating(false);
+      }
+    };
+
+  const createGroup =
+    async () => {
+      if (!selectedRoom) {
+        return;
+      }
+
+      if (!groupName.trim()) {
+        setError(
+          "Enter a group name."
+        );
+
+        return;
+      }
+
+      setCreatingGroup(true);
+      setError("");
+
+      try {
+        const response =
+          await fetch(
+            `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/groups`,
+            {
+              method:
+                "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+                ...authHeaders
+              },
+
+              body:
+                JSON.stringify({
+                  name:
+                    groupName.trim()
+                })
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          setError(
+            data.message ||
+              "Failed to create group."
+          );
+
+          return;
+        }
+
+        setGroupName("");
+        setShowCreateGroup(
+          false
+        );
+
+        setSelectedRoom(
+          data.room
+        );
+      } catch {
+        setError(
+          "Could not connect to the server."
+        );
+      } finally {
+        setCreatingGroup(
+          false
+        );
+      }
+    };
+
+  const addUserToGroup =
+    async (
+      groupId,
+      participantId
+    ) => {
+      if (
+        !selectedRoom ||
+        actionLoading
+      ) {
+        return;
+      }
+
+      setActionLoading(
+        true
+      );
+
+      setError("");
+
+      try {
+        const response =
+          await fetch(
+            `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/groups/${groupId}/members`,
+            {
+              method:
+                "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+                ...authHeaders
+              },
+
+              body:
+                JSON.stringify({
+                  participantId
+                })
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          setError(
+            data.message ||
+              "Failed to add user."
+          );
+
+          return;
+        }
+
+        setSelectedGroupId(
+          null
+        );
+
+        setSelectedRoom(
+          data.room
+        );
+      } catch {
+        setError(
+          "Could not connect to the server."
+        );
+      } finally {
+        setActionLoading(
+          false
+        );
+      }
+    };
+
+  const removeUserFromGroup =
+    async (
+      groupId,
+      participantId
+    ) => {
+      if (
+        !selectedRoom ||
+        actionLoading
+      ) {
+        return;
+      }
+
+      setActionLoading(
+        true
+      );
+
+      setError("");
+
+      try {
+        const response =
+          await fetch(
+            `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/groups/${groupId}/members/${participantId}`,
+            {
+              method:
+                "DELETE",
+
+              headers:
+                authHeaders
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          setError(
+            data.message ||
+              "Failed to remove user."
+          );
+
+          return;
+        }
+
+        setSelectedRoom(
+          data.room
+        );
+      } catch {
+        setError(
+          "Could not connect to the server."
+        );
+      } finally {
+        setActionLoading(
+          false
+        );
+      }
+    };
+
+  const closeConfirmModal =
+    () => {
+      setConfirmModal({
+        open: false,
+        title: "",
+        message: "",
+        action: null
+      });
+    };
+
+  const performDeleteGroup =
+    async (
+      groupId
+    ) => {
+      closeConfirmModal();
+
+      if (
+        !selectedRoom ||
+        actionLoading
+      ) {
+        return;
+      }
+
+      setActionLoading(
+        true
+      );
+
+      setError("");
+
+      try {
+        const response =
+          await fetch(
+            `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/groups/${groupId}`,
+            {
+              method:
+                "DELETE",
+
+              headers:
+                authHeaders
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          setError(
+            data.message ||
+              "Failed to delete group."
+          );
+
+          return;
+        }
+
+        setSelectedGroupId(
+          null
+        );
+
+        setSelectedRoom(
+          data.room
+        );
+      } catch {
+        setError(
+          "Could not connect to the server."
+        );
+      } finally {
+        setActionLoading(
+          false
+        );
+      }
+    };
+
+  const deleteGroup =
+    groupId => {
+      if (
+        !selectedRoom ||
+        actionLoading
+      ) {
+        return;
+      }
+
+      setConfirmModal({
+        open: true,
+        title:
+          "Delete group?",
+        message:
+          "All participants will be removed from this group. They can be assigned to another group later.",
+        action:
+          () =>
+            performDeleteGroup(
+              groupId
+            )
+      });
+    };
+
+  const performDeleteRoom =
+    async (
+      roomCode
+    ) => {
+      closeConfirmModal();
+      setError("");
+
+      try {
+        const response =
+          await fetch(
+            `${import.meta.env.VITE_API_URL}/api/rooms/${roomCode}`,
+            {
+              method:
+                "DELETE",
+
+              headers:
+                authHeaders
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          setError(
+            data.message ||
+              "Failed to delete room."
+          );
+
+          return;
+        }
+
+        setRooms(
+          currentRooms =>
+            currentRooms.filter(
+              room =>
+                room.roomCode !==
+                roomCode
+            )
+        );
+
+        if (
+          selectedRoom?.roomCode ===
+          roomCode
+        ) {
+          setSelectedRoom(
+            null
+          );
+
+          setSelectedGroupId(
+            null
+          );
+
+          setMatchmaking(
+            null
+          );
+        }
+      } catch {
+        setError(
+          "Could not connect to the server."
+        );
+      }
+    };
+
+  const deleteRoom =
+    roomCode => {
+      setConfirmModal({
+        open: true,
+        title:
+          "Delete room?",
+        message:
+          "This will remove the room from your active rooms. Participants will no longer be able to join it.",
+        action:
+          () =>
+            performDeleteRoom(
+              roomCode
+            )
+      });
+    };
+
+  const startRound =
+    async () => {
+      if (
+        !selectedRoom ||
+        roundActionLoading
+      ) {
+        return;
+      }
+
+      const nextRound =
+        Number(
+          selectedRoom.currentRound
+        ) + 1;
+
+      if (
+        nextRound >
+        Number(
+          selectedRoom.totalRounds
+        )
+      ) {
+        return;
+      }
+
+      setRoundActionLoading(
+        true
+      );
+
+      setError("");
+
+      try {
+        const response =
+          await fetch(
+            `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/rounds/start`,
+            {
+              method:
+                "POST",
+
+              headers: {
+                "Content-Type":
+                  "application/json",
+                ...authHeaders
+              },
+
+              body:
+                JSON.stringify({
+                  roundNumber:
+                    nextRound
+                })
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          setError(
+            data.message ||
+              "Failed to start round."
+          );
+
+          return;
+        }
+
+        setSelectedRoom(
+          data.room
+        );
+
+        setSelectedVoteRound(
+          nextRound
+        );
+
+        await loadMatchmaking(
+          data.room.roomCode
+        );
+      } catch {
+        setError(
+          "Could not connect to the server."
+        );
+      } finally {
+        setRoundActionLoading(
+          false
+        );
+      }
+    };
+
+  const completeRound =
+    async () => {
+      if (
+        !selectedRoom ||
+        roundActionLoading ||
+        !selectedRoom.currentRound
+      ) {
+        return;
+      }
+
+      const round =
+        selectedRoom.rounds?.find(
+          item =>
+            item.roundNumber ===
+            Number(
+              selectedRoom.currentRound
+            )
+        );
+
+      if (!round) {
+        return;
+      }
+
+      setRoundActionLoading(
+        true
+      );
+
+      setError("");
+
+      try {
+        const response =
+          await fetch(
+            `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/rounds/${selectedRoom.currentRound}/complete`,
+            {
+              method:
+                "POST",
+
+              headers:
+                authHeaders
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          setError(
+            data.message ||
+              "Failed to update round."
+          );
+
+          return;
+        }
+
+        setSelectedRoom(
+          data.room
+        );
+
+        await loadMatchmaking(
+          data.room.roomCode
+        );
+      } catch {
+        setError(
+          "Could not connect to the server."
+        );
+      } finally {
+        setRoundActionLoading(
+          false
+        );
+      }
+    };
+
   const finalizeMatchmaking =
     async () => {
       if (
@@ -735,6 +905,7 @@ function AdminDashboard() {
       setRoundActionLoading(
         true
       );
+
       setError("");
 
       try {
@@ -742,7 +913,9 @@ function AdminDashboard() {
           await fetch(
             `${import.meta.env.VITE_API_URL}/api/rooms/${selectedRoom.roomCode}/matchmaking/finalize`,
             {
-              method: "POST",
+              method:
+                "POST",
+
               headers:
                 authHeaders
             }
@@ -756,6 +929,7 @@ function AdminDashboard() {
             data.message ||
               "Failed to finalize matchmaking."
           );
+
           return;
         }
 
@@ -784,14 +958,117 @@ function AdminDashboard() {
       }
     };
 
-  const logout = () => {
-    sessionStorage.removeItem(
-      "meetafriendToken"
+  const logout =
+    () => {
+      sessionStorage.removeItem(
+        "meetafriendToken"
+      );
+
+      window.location.href =
+        "/admin";
+    };
+
+  const currentRound =
+    selectedRoom?.rounds?.find(
+      round =>
+        round.roundNumber ===
+        Number(
+          selectedRoom?.currentRound
+        )
     );
 
-    window.location.href =
-      "/admin";
-  };
+  const currentRoundActive =
+    currentRound?.status ===
+    "active";
+
+  const currentRoundVoting =
+    currentRound?.status ===
+    "voting";
+
+  const currentRoundComplete =
+    currentRound?.status ===
+    "completed";
+
+  const allRoundsComplete =
+    Boolean(
+      selectedRoom &&
+      selectedRoom.rounds?.length ===
+        Number(
+          selectedRoom.totalRounds
+        ) &&
+      selectedRoom.rounds.every(
+        round =>
+          round.status ===
+          "completed"
+      )
+    );
+
+  const canStartRound =
+    Boolean(
+      selectedRoom &&
+      !selectedRoom.matchmakingCompleted &&
+      !allRoundsComplete &&
+      (
+        !currentRound ||
+        currentRoundVoting ||
+        currentRoundComplete
+      )
+    );
+
+  const canCompleteRound =
+    Boolean(
+      selectedRoom &&
+      (
+        currentRoundActive ||
+        (
+          currentRoundVoting &&
+          Number(
+            selectedRoom.currentRound
+          ) ===
+            Number(
+              selectedRoom.totalRounds
+            )
+        )
+      )
+    );
+
+  const canFinalize =
+    Boolean(
+      selectedRoom &&
+      !selectedRoom.matchmakingCompleted &&
+      allRoundsComplete
+    );
+
+  const voteRounds =
+    selectedRoom?.rounds?.filter(
+      round =>
+        round.roundNumber >= 1
+    ) || [];
+
+  const selectedVoteRoundData =
+    selectedRoom?.rounds?.find(
+      round =>
+        round.roundNumber ===
+        Number(
+          selectedVoteRound
+        )
+    );
+
+  const roundSelections =
+    matchmaking?.selections?.filter(
+      selection =>
+        selection.roundNumber ===
+        Number(
+          selectedVoteRound
+        )
+    ) || [];
+
+  const votingParticipantCount =
+    selectedRoom?.participants
+      ?.length || 0;
+
+  const submittedVoteCount =
+    roundSelections.length;
 
   const roomUrl =
     selectedRoom
@@ -800,9 +1077,12 @@ function AdminDashboard() {
 
   const assignedUserIds =
     selectedRoom?.groups?.flatMap(
-      (group) =>
-        (group.members || []).map(
-          (member) =>
+      group =>
+        (
+          group.members ||
+          []
+        ).map(
+          member =>
             String(
               member.participantId
             )
@@ -811,97 +1091,13 @@ function AdminDashboard() {
 
   const unassignedUsers =
     selectedRoom?.participants?.filter(
-      (participant) =>
+      participant =>
         !assignedUserIds.includes(
           String(
             participant._id
           )
         )
     ) || [];
-
-  const getGroupName =
-    (groupId) => {
-      const group =
-        selectedRoom?.groups?.find(
-          (item) =>
-            item._id ===
-            groupId
-        );
-
-      return (
-        group?.name ||
-        "Group"
-      );
-    };
-
-  const currentRound =
-    selectedRoom?.rounds?.find(
-      (round) =>
-        round.roundNumber ===
-        selectedRoom.currentRound
-    );
-
-  const currentRoundComplete =
-    currentRound?.status ===
-    "completed";
-
-  const currentRoundActive =
-    currentRound?.status ===
-      "active" ||
-    currentRound?.status ===
-      "voting";
-
-  const allRoundsComplete =
-    selectedRoom?.rounds?.length ===
-      selectedRoom?.totalRounds &&
-    selectedRoom?.rounds?.every(
-      (round) =>
-        round.status ===
-        "completed"
-    );
-
-  const canStartRound =
-    selectedRoom &&
-    !selectedRoom.matchmakingCompleted &&
-    !currentRoundActive &&
-    !allRoundsComplete &&
-    selectedRoom.participants;
-    
-
-  const canCompleteRound =
-    selectedRoom &&
-    currentRoundActive;
-
-  const canFinalize =
-    selectedRoom &&
-    !selectedRoom.matchmakingCompleted &&
-    allRoundsComplete;
-
-  const voteRounds =
-    selectedRoom?.rounds?.filter(
-      (round) =>
-        round.roundNumber >= 2
-    ) || [];
-
-  const selectedVoteRoundData =
-    selectedRoom?.rounds?.find(
-      (round) =>
-        round.roundNumber ===
-        selectedVoteRound
-    );
-
-  const roundSelections =
-    matchmaking?.selections?.filter(
-      (selection) =>
-        selection.roundNumber ===
-        selectedVoteRound
-    ) || [];
-
-  const votingParticipantCount =
-    selectedRoom?.participants?.length || 0;
-
-  const submittedVoteCount =
-    roundSelections.length;
 
   return (
     <main className="admin-dashboard">
@@ -919,7 +1115,9 @@ function AdminDashboard() {
 
         <button
           className="logout-button"
-          onClick={logout}
+          onClick={
+            logout
+          }
         >
           Logout
         </button>
@@ -935,7 +1133,9 @@ function AdminDashboard() {
             <h1>
               Your
               <br />
-              <span>rooms.</span>
+              <span>
+                rooms.
+              </span>
             </h1>
           </div>
 
@@ -945,13 +1145,18 @@ function AdminDashboard() {
               setShowCreate(
                 true
               );
+
               setSelectedRoom(
                 null
               );
+
               setError("");
             }}
           >
-            <span>+</span>
+            <span>
+              +
+            </span>
+
             Create room
           </button>
         </div>
@@ -976,20 +1181,25 @@ function AdminDashboard() {
             <input
               type="text"
               placeholder="e.g. Friday Meetup"
-              value={roomName}
-              onChange={(event) =>
-                setRoomName(
-                  event.target.value
-                )
+              value={
+                roomName
               }
-              onKeyDown={(event) => {
-                if (
-                  event.key ===
-                  "Enter"
-                ) {
-                  createRoom();
+              onChange={
+                event =>
+                  setRoomName(
+                    event.target.value
+                  )
+              }
+              onKeyDown={
+                event => {
+                  if (
+                    event.key ===
+                    "Enter"
+                  ) {
+                    createRoom();
+                  }
                 }
-              }}
+              }
               autoFocus
             />
 
@@ -1000,8 +1210,14 @@ function AdminDashboard() {
                   setShowCreate(
                     false
                   );
-                  setRoomName("");
-                  setError("");
+
+                  setRoomName(
+                    ""
+                  );
+
+                  setError(
+                    ""
+                  );
                 }}
               >
                 Cancel
@@ -1033,7 +1249,9 @@ function AdminDashboard() {
                 </span>
 
                 <span>
-                  {rooms.length}
+                  {
+                    rooms.length
+                  }
                 </span>
               </div>
 
@@ -1057,7 +1275,7 @@ function AdminDashboard() {
               ) : (
                 <div className="rooms-list">
                   {rooms.map(
-                    (room) => (
+                    room => (
                       <div
                         className="room-list-item"
                         key={
@@ -1080,17 +1298,21 @@ function AdminDashboard() {
 
                         <div className="room-list-meta">
                           <span>
-                            {room.participantCount ||
+                            {
+                              room.participantCount ||
                               room
                                 .participants
                                 ?.length ||
-                              0}{" "}
+                              0
+                            }{" "}
                             participant
-                            {(room.participantCount ||
+                            {(
+                              room.participantCount ||
                               room
                                 .participants
                                 ?.length ||
-                              0) !==
+                              0
+                            ) !==
                             1
                               ? "s"
                               : ""}
@@ -1133,12 +1355,15 @@ function AdminDashboard() {
                 setSelectedRoom(
                   null
                 );
+
                 setSelectedGroupId(
                   null
                 );
+
                 setMatchmaking(
                   null
                 );
+
                 setError("");
               }}
             >
@@ -1182,8 +1407,12 @@ function AdminDashboard() {
             <div className="room-management">
               <div className="qr-card">
                 <QRCodeSVG
-                  value={roomUrl}
-                  size={260}
+                  value={
+                    roomUrl
+                  }
+                  size={
+                    260
+                  }
                   level="H"
                   includeMargin
                 />
@@ -1193,7 +1422,9 @@ function AdminDashboard() {
                 </strong>
 
                 <span>
-                  {roomUrl}
+                  {
+                    roomUrl
+                  }
                 </span>
               </div>
 
@@ -1208,7 +1439,8 @@ function AdminDashboard() {
                       {
                         selectedRoom
                           .participants
-                          ?.length
+                          ?.length ||
+                        0
                       }
                     </h3>
                   </div>
@@ -1223,57 +1455,61 @@ function AdminDashboard() {
                   </button>
                 </div>
 
-                {selectedRoom
-                  .participants
-                  ?.length >
-                0 ? (
-                  <div className="participants-list">
-                    {selectedRoom.participants.map(
-                      (
-                        participant
-                      ) => {
-                        const assigned =
-                          assignedUserIds.includes(
-                            String(
-                              participant._id
-                            )
-                          );
+                {
+                  selectedRoom
+                    .participants
+                    ?.length >
+                  0 ? (
+                    <div className="participants-list">
+                      {
+                        selectedRoom
+                          .participants
+                          .map(
+                            participant => {
+                              const assigned =
+                                assignedUserIds.includes(
+                                  String(
+                                    participant._id
+                                  )
+                                );
 
-                        return (
-                          <div
-                            className="participant"
-                            key={
-                              participant._id
+                              return (
+                                <div
+                                  className="participant"
+                                  key={
+                                    participant._id
+                                  }
+                                >
+                                  <span>
+                                    {
+                                      participant.username
+                                    }
+                                  </span>
+
+                                  <span
+                                    className={
+                                      assigned
+                                        ? "user-assigned"
+                                        : "user-unassigned"
+                                    }
+                                  >
+                                    {assigned
+                                      ? "Assigned"
+                                      : "Unassigned"}
+                                  </span>
+                                </div>
+                              );
                             }
-                          >
-                            <span>
-                              {
-                                participant.username
-                              }
-                            </span>
-
-                            <span
-                              className={
-                                assigned
-                                  ? "user-assigned"
-                                  : "user-unassigned"
-                              }
-                            >
-                              {assigned
-                                ? "Assigned"
-                                : "Unassigned"}
-                            </span>
-                          </div>
-                        );
+                          )
                       }
-                    )}
-                  </div>
-                ) : (
-                  <p className="no-participants">
-                    Nobody has
-                    joined yet.
-                  </p>
-                )}
+                    </div>
+                  ) : (
+                    <p className="no-participants">
+                      Nobody has
+                      joined yet.
+                    </p>
+                  )
+                }
               </div>
             </div>
 
@@ -1290,54 +1526,62 @@ function AdminDashboard() {
                 </div>
 
                 <div className="matchmaking-status">
-                  {selectedRoom.matchmakingCompleted
-                    ? "COMPLETE"
-                    : currentRoundActive
-                    ? `ROUND ${selectedRoom.currentRound} ACTIVE`
-                    : allRoundsComplete
-                    ? "READY TO FINALIZE"
-                    : `ROUND ${selectedRoom.currentRound} / ${selectedRoom.totalRounds}`}
+                  {
+                    selectedRoom.matchmakingCompleted
+                      ? "COMPLETE"
+                      : currentRoundActive
+                      ? `ROUND ${selectedRoom.currentRound} IN PROGRESS`
+                      : currentRoundVoting
+                      ? `ROUND ${selectedRoom.currentRound} VOTING`
+                      : allRoundsComplete
+                      ? "READY TO FINALIZE"
+                      : `ROUND ${selectedRoom.currentRound} / ${selectedRoom.totalRounds}`
+                  }
                 </div>
               </div>
 
               <div className="matchmaking-controls">
                 {!selectedRoom.matchmakingCompleted &&
                   !allRoundsComplete &&
-                  !currentRoundActive && (
+                  canStartRound && (
                     <button
                       className="primary-management-button"
                       onClick={
                         startRound
                       }
                       disabled={
-                        !canStartRound ||
                         roundActionLoading
                       }
                     >
-                      {roundActionLoading
-                        ? "Starting..."
-                        : `Start Round ${
-                            Number(
-                              selectedRoom.currentRound
-                            ) + 1
-                          }`}
+                      {
+                        roundActionLoading
+                          ? "Starting..."
+                          : `Start Round ${
+                              Number(
+                                selectedRoom.currentRound
+                              ) + 1
+                            }`
+                      }
                     </button>
                   )}
 
-                {currentRoundActive && (
+                {canCompleteRound && (
                   <button
                     className="primary-management-button"
                     onClick={
                       completeRound
                     }
                     disabled={
-                      !canCompleteRound ||
                       roundActionLoading
                     }
                   >
-                    {roundActionLoading
-                      ? "Completing..."
-                      : `Complete Round ${selectedRoom.currentRound}`}
+                    {
+                      roundActionLoading
+                        ? "Updating..."
+                        : currentRoundVoting
+                        ? `Close Voting - Round ${selectedRoom.currentRound}`
+                        : `Complete Round ${selectedRoom.currentRound}`
+                    }
                   </button>
                 )}
 
@@ -1349,13 +1593,14 @@ function AdminDashboard() {
                         finalizeMatchmaking
                       }
                       disabled={
-                        !canFinalize ||
                         roundActionLoading
                       }
                     >
-                      {roundActionLoading
-                        ? "Finalizing..."
-                        : "Finalize matchmaking"}
+                      {
+                        roundActionLoading
+                          ? "Finalizing..."
+                          : "Finalize matchmaking"
+                      }
                     </button>
                   )}
 
@@ -1371,9 +1616,11 @@ function AdminDashboard() {
                       matchmakingLoading
                     }
                   >
-                    {matchmakingLoading
-                      ? "Loading..."
-                      : "Refresh results"}
+                    {
+                      matchmakingLoading
+                        ? "Loading..."
+                        : "Refresh results"
+                    }
                   </button>
                 )}
               </div>
@@ -1382,34 +1629,42 @@ function AdminDashboard() {
                 {Array.from(
                   {
                     length:
-                      selectedRoom.totalRounds
+                      Number(
+                        selectedRoom.totalRounds
+                      ) || 0
                   },
                   (_, index) => {
                     const roundNumber =
                       index + 1;
 
                     const round =
-                      selectedRoom.rounds?.find(
-                        (item) =>
-                          item.roundNumber ===
-                          roundNumber
-                      );
+                      selectedRoom
+                        .rounds
+                        ?.find(
+                          item =>
+                            item.roundNumber ===
+                            roundNumber
+                        );
 
                     const completed =
                       round?.status ===
                       "completed";
 
+                    const voting =
+                      round?.status ===
+                      "voting";
+
                     const active =
                       round?.status ===
-                        "active" ||
-                      round?.status ===
-                        "voting";
+                      "active";
 
                     return (
                       <div
                         className={
                           completed
                             ? "round-step completed"
+                            : voting
+                            ? "round-step active"
                             : active
                             ? "round-step active"
                             : "round-step"
@@ -1419,14 +1674,20 @@ function AdminDashboard() {
                         }
                       >
                         <span>
-                          {completed
-                            ? "✓"
-                            : roundNumber}
+                          {
+                            completed
+                              ? "✓"
+                              : voting
+                              ? "●"
+                              : roundNumber
+                          }
                         </span>
 
                         <strong>
                           Round{" "}
-                          {roundNumber}
+                          {
+                            roundNumber
+                          }
                         </strong>
                       </div>
                     );
@@ -1462,29 +1723,38 @@ function AdminDashboard() {
                         matchmakingLoading
                       }
                     >
-                      {matchmakingLoading
-                        ? "Refreshing..."
-                        : "Refresh votes"}
+                      {
+                        matchmakingLoading
+                          ? "Refreshing..."
+                          : "Refresh votes"
+                      }
                     </button>
                   </div>
 
                   <div className="vote-round-bar">
                     <div className="vote-round-label">
-                      <span>VOTING ROUND</span>
+                      <span>
+                        VOTING ROUND
+                      </span>
 
                       <strong>
                         Round{" "}
-                        {selectedVoteRound}
+                        {
+                          selectedVoteRound
+                        }
                       </strong>
                     </div>
 
                     <div className="vote-round-tabs">
-                      {voteRounds.length > 0 ? (
+                      {voteRounds.length >
+                      0 ? (
                         voteRounds.map(
-                          (round) => (
+                          round => (
                             <button
                               type="button"
-                              key={round.roundNumber}
+                              key={
+                                round.roundNumber
+                              }
                               className={
                                 selectedVoteRound ===
                                 round.roundNumber
@@ -1498,23 +1768,30 @@ function AdminDashboard() {
                               }
                             >
                               <span>
-                                {round.status ===
-                                "completed"
-                                  ? "✓"
-                                  : round.status ===
-                                    "voting"
-                                  ? "●"
-                                  : round.roundNumber}
+                                {
+                                  round.status ===
+                                  "completed"
+                                    ? "✓"
+                                    : round.status ===
+                                      "voting"
+                                    ? "●"
+                                    : round.status ===
+                                      "active"
+                                    ? "○"
+                                    : round.roundNumber
+                                }
                               </span>
 
                               Round{" "}
-                              {round.roundNumber}
+                              {
+                                round.roundNumber
+                              }
                             </button>
                           )
                         )
                       ) : (
                         <div className="vote-empty-tab">
-                          Voting starts in Round 2
+                          Voting information will appear after a round's conversation is completed.
                         </div>
                       )}
                     </div>
@@ -1524,132 +1801,175 @@ function AdminDashboard() {
                     <>
                       <div className="vote-overview">
                         <div className="vote-stat">
-                          <span>SUBMISSIONS</span>
+                          <span>
+                            SUBMISSIONS
+                          </span>
+
                           <strong>
-                            {submittedVoteCount}
+                            {
+                              submittedVoteCount
+                            }
+
                             <small>
-                              /{votingParticipantCount}
+                              /
+                              {
+                                votingParticipantCount
+                              }
                             </small>
                           </strong>
                         </div>
 
                         <div className="vote-stat">
-                          <span>STATUS</span>
+                          <span>
+                            STATUS
+                          </span>
+
                           <strong className="vote-status-text">
-                            {selectedVoteRoundData.status ===
-                            "completed"
-                              ? "Complete"
-                              : selectedVoteRoundData.status ===
-                                "voting"
-                              ? "Voting"
-                              : "Waiting"}
+                            {
+                              selectedVoteRoundData.status ===
+                              "completed"
+                                ? "Complete"
+                                : selectedVoteRoundData.status ===
+                                  "voting"
+                                ? "Voting"
+                                : selectedVoteRoundData.status ===
+                                  "active"
+                                ? "Conversation"
+                                : "Waiting"
+                            }
                           </strong>
                         </div>
 
                         <div className="vote-stat">
-                          <span>ROUND</span>
+                          <span>
+                            ROUND
+                          </span>
+
                           <strong>
-                            {selectedVoteRound}
+                            {
+                              selectedVoteRound
+                            }
                           </strong>
                         </div>
                       </div>
 
                       <div className="voting-results-list">
-                        {selectedRoom.participants?.map(
-                          (
-                            participant,
-                            index
-                          ) => {
-                            const selection =
-                              roundSelections.find(
-                                (item) =>
-                                  String(
-                                    item.participantId
-                                  ) ===
-                                  String(
-                                    participant._id
-                                  )
-                              );
-
-                            return (
-                              <div
-                                className={
-                                  selection
-                                    ? "vote-result-row submitted"
-                                    : "vote-result-row"
-                                }
-                                key={
-                                  participant._id
-                                }
-                                style={{
-                                  animationDelay: `${index * 35}ms`
-                                }}
-                              >
-                                <div className="vote-person">
-                                  <span className="vote-avatar">
-                                    {(
-                                      participant.username ||
-                                      "P"
-                                    )
-                                      .charAt(0)
-                                      .toUpperCase()}
-                                  </span>
-
-                                  <div>
-                                    <strong>
-                                      {participant.username ||
-                                        "Participant"}
-                                    </strong>
-
-                                    <span>
-                                      {selection
-                                        ? "Selection submitted"
-                                        : "Not voted yet"}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                <div className="vote-arrow">
-                                  →
-                                </div>
-
-                                <div className="vote-targets">
-                                  {selection?.selectedParticipants
-                                    ?.length ? (
-                                    selection.selectedParticipants.map(
-                                      (person) => (
-                                        <span
-                                          className="vote-target"
-                                          key={
-                                            person.participantId
-                                          }
-                                        >
-                                          {person.username}
-                                        </span>
+                        {
+                          selectedRoom
+                            .participants
+                            ?.map(
+                              (
+                                participant,
+                                index
+                              ) => {
+                                const selection =
+                                  roundSelections.find(
+                                    item =>
+                                      String(
+                                        item.participantId
+                                      ) ===
+                                      String(
+                                        participant._id
                                       )
-                                    )
-                                  ) : (
-                                    <span className="vote-no-selection">
-                                      {selection
-                                        ? "No people selected"
-                                        : "Waiting for vote"}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          }
-                        )}
+                                  );
+
+                                return (
+                                  <div
+                                    className={
+                                      selection
+                                        ? "vote-result-row submitted"
+                                        : "vote-result-row"
+                                    }
+                                    key={
+                                      participant._id
+                                    }
+                                    style={{
+                                      animationDelay:
+                                        `${index * 35}ms`
+                                    }}
+                                  >
+                                    <div className="vote-person">
+                                      <span className="vote-avatar">
+                                        {(
+                                          participant.username ||
+                                          "P"
+                                        )
+                                          .charAt(
+                                            0
+                                          )
+                                          .toUpperCase()}
+                                      </span>
+
+                                      <div>
+                                        <strong>
+                                          {
+                                            participant.username
+                                          }
+                                        </strong>
+
+                                        <span>
+                                          {
+                                            selection
+                                              ? "Selection submitted"
+                                              : "Not voted yet"
+                                          }
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    <div className="vote-arrow">
+                                      →
+                                    </div>
+
+                                    <div className="vote-targets">
+                                      {
+                                        selection
+                                          ?.selectedParticipants
+                                          ?.length ? (
+                                          selection.selectedParticipants.map(
+                                            person => (
+                                              <span
+                                                className="vote-target"
+                                                key={
+                                                  person.participantId
+                                                }
+                                              >
+                                                {
+                                                  person.username
+                                                }
+                                              </span>
+                                            )
+                                          )
+                                        ) : (
+                                          <span className="vote-no-selection">
+                                            {
+                                              selection
+                                                ? "No people selected"
+                                                : "Waiting for vote"
+                                            }
+                                          </span>
+                                        )
+                                      }
+                                    </div>
+                                  </div>
+                                );
+                              }
+                            )
+                        }
                       </div>
                     </>
                   ) : (
                     <div className="vote-not-available">
-                      <div>○</div>
+                      <div>
+                        ○
+                      </div>
+
                       <strong>
-                        Voting starts from Round 2
+                        Round not started yet
                       </strong>
+
                       <span>
-                        Round 1 is conversation only.
+                        Voting becomes available when this round's conversation ends.
                       </span>
                     </div>
                   )}
@@ -1671,186 +1991,196 @@ function AdminDashboard() {
                       </div>
 
                       <div className="results-grid">
-                      <div className="results-card">
-                        <span>
-                          MUTUAL MATCHES
-                        </span>
+                        <div className="results-card">
+                          <span>
+                            MUTUAL MATCHES
+                          </span>
 
-                        <strong>
+                          <strong>
+                            {
+                              matchmaking
+                                .mutualMatches
+                                ?.length ||
+                              0
+                            }
+                          </strong>
+
                           {
                             matchmaking
                               .mutualMatches
-                              ?.length ||
-                            0
-                          }
-                        </strong>
+                              ?.length >
+                            0 ? (
+                              <div className="results-list">
+                                {
+                                  matchmaking
+                                    .mutualMatches
+                                    .map(
+                                      (
+                                        match,
+                                        index
+                                      ) => (
+                                        <div
+                                          className="result-row"
+                                          key={
+                                            index
+                                          }
+                                        >
+                                          <span>
+                                            {
+                                              match
+                                                .usernames?.[0]
+                                            }
+                                          </span>
 
-                        {matchmaking
-                          .mutualMatches
-                          ?.length >
-                        0 ? (
-                          <div className="results-list">
-                            {matchmaking.mutualMatches.map(
-                              (
-                                match,
-                                index
-                              ) => (
-                                <div
-                                  className="result-row"
-                                  key={
-                                    index
-                                  }
-                                >
-                                  <span>
-                                    {
-                                      match
-                                        .usernames?.[0]
-                                    }
-                                  </span>
+                                          <strong>
+                                            ↔
+                                          </strong>
 
-                                  <strong>
-                                    ↔
-                                  </strong>
-
-                                  <span>
-                                    {
-                                      match
-                                        .usernames?.[1]
-                                    }
-                                  </span>
-                                </div>
-                              )
-                            )}
-                          </div>
-                        ) : (
-                          <p>
-                            No mutual
-                            selections.
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="results-card">
-                        <span>
-                          SELECTIONS
-                        </span>
-
-                        <strong>
-                          {
-                            matchmaking
-                              .selections
-                              ?.length ||
-                            0
-                          }
-                        </strong>
-
-                        <div className="results-list">
-                          {matchmaking
-                            .selections
-                            ?.map(
-                              (
-                                selection,
-                                index
-                              ) => (
-                                <div
-                                  className="selection-row"
-                                  key={
-                                    `${selection.participantId}-${selection.roundNumber}-${index}`
-                                  }
-                                >
-                                  <div>
-                                    <strong>
-                                      {
-                                        selection.username
-                                      }
-                                    </strong>
-
-                                    <span>
-                                      Round{" "}
-                                      {
-                                        selection.roundNumber
-                                      }
-                                    </span>
-                                  </div>
-
-                                  <p>
-                                    {selection
-                                      .selectedParticipants
-                                      ?.length
-                                      ? selection.selectedParticipants
-                                          .map(
-                                            (
-                                              person
-                                            ) =>
-                                              person.username
-                                          )
-                                          .join(
-                                            ", "
-                                          )
-                                      : "No selections"}
-                                  </p>
-                                </div>
-                              )
-                            )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="results-card final-groups-results">
-                      <span>
-                        FINAL FRIENDSHIP QUEST GROUPS
-                      </span>
-
-                      <div className="final-groups-grid">
-                        {matchmaking
-                          .finalGroups
-                          ?.map(
-                            (
-                              group
-                            ) => (
-                              <div
-                                className="final-group"
-                                key={
-                                  group.groupNumber
+                                          <span>
+                                            {
+                                              match
+                                                .usernames?.[1]
+                                            }
+                                          </span>
+                                        </div>
+                                      )
+                                    )
                                 }
-                              >
-                                <div>
-                                  <strong>
-                                    Group{" "}
-                                    {
-                                      group.groupNumber
-                                    }
-                                  </strong>
+                              </div>
+                            ) : (
+                              <p>
+                                No mutual
+                                selections.
+                              </p>
+                            )
+                          }
+                        </div>
 
-                                  <span>
-                                    {
-                                      group.members
-                                        ?.length
-                                    }{" "}
-                                    / 4
-                                  </span>
-                                </div>
+                        <div className="results-card">
+                          <span>
+                            SELECTIONS
+                          </span>
 
-                                {group.members?.map(
+                          <strong>
+                            {
+                              matchmaking
+                                .selections
+                                ?.length ||
+                              0
+                            }
+                          </strong>
+
+                          <div className="results-list">
+                            {
+                              matchmaking
+                                .selections
+                                ?.map(
                                   (
-                                    member
+                                    selection,
+                                    index
                                   ) => (
-                                    <p
+                                    <div
+                                      className="selection-row"
                                       key={
-                                        member.participantId
+                                        `${selection.participantId}-${selection.roundNumber}-${index}`
                                       }
                                     >
-                                      {
-                                        member.username
-                                      }
-                                    </p>
+                                      <div>
+                                        <strong>
+                                          {
+                                            selection.username
+                                          }
+                                        </strong>
+
+                                        <span>
+                                          Round{" "}
+                                          {
+                                            selection.roundNumber
+                                          }
+                                        </span>
+                                      </div>
+
+                                      <p>
+                                        {
+                                          selection
+                                            .selectedParticipants
+                                            ?.length
+                                            ? selection.selectedParticipants
+                                                .map(
+                                                  person =>
+                                                    person.username
+                                                )
+                                                .join(
+                                                  ", "
+                                                )
+                                            : "No selections"
+                                        }
+                                      </p>
+                                    </div>
                                   )
-                                )}
-                              </div>
-                            )
-                          )}
+                                )
+                            }
+                          </div>
+                        </div>
                       </div>
-                    </div>
+
+                      <div className="results-card final-groups-results">
+                        <span>
+                          FINAL FRIENDSHIP QUEST GROUPS
+                        </span>
+
+                        <div className="final-groups-grid">
+                          {
+                            matchmaking
+                              .finalGroups
+                              ?.map(
+                                group => (
+                                  <div
+                                    className="final-group"
+                                    key={
+                                      group.groupNumber
+                                    }
+                                  >
+                                    <div>
+                                      <strong>
+                                        Group{" "}
+                                        {
+                                          group.groupNumber
+                                        }
+                                      </strong>
+
+                                      <span>
+                                        {
+                                          group
+                                            .members
+                                            ?.length ||
+                                          0
+                                        }{" "}
+                                        / 4
+                                      </span>
+                                    </div>
+
+                                    {
+                                      group.members?.map(
+                                        member => (
+                                          <p
+                                            key={
+                                              member.participantId
+                                            }
+                                          >
+                                            {
+                                              member.username
+                                            }
+                                          </p>
+                                        )
+                                      )
+                                    }
+                                  </div>
+                                )
+                              )
+                          }
+                        </div>
+                      </div>
                     </>
                   )}
                 </div>
@@ -1875,8 +2205,14 @@ function AdminDashboard() {
                     setShowCreateGroup(
                       true
                     );
-                    setGroupName("");
-                    setError("");
+
+                    setGroupName(
+                      ""
+                    );
+
+                    setError(
+                      ""
+                    );
                   }}
                 >
                   + Create group
@@ -1891,23 +2227,22 @@ function AdminDashboard() {
                     value={
                       groupName
                     }
-                    onChange={(
-                      event
-                    ) =>
-                      setGroupName(
-                        event.target.value
-                      )
+                    onChange={
+                      event =>
+                        setGroupName(
+                          event.target.value
+                        )
                     }
-                    onKeyDown={(
-                      event
-                    ) => {
-                      if (
-                        event.key ===
-                        "Enter"
-                      ) {
-                        createGroup();
+                    onKeyDown={
+                      event => {
+                        if (
+                          event.key ===
+                          "Enter"
+                        ) {
+                          createGroup();
+                        }
                       }
-                    }}
+                    }
                     autoFocus
                   />
 
@@ -1920,9 +2255,11 @@ function AdminDashboard() {
                       creatingGroup
                     }
                   >
-                    {creatingGroup
-                      ? "Creating..."
-                      : "Create group"}
+                    {
+                      creatingGroup
+                        ? "Creating..."
+                        : "Create group"
+                    }
                   </button>
 
                   <button
@@ -1931,7 +2268,10 @@ function AdminDashboard() {
                       setShowCreateGroup(
                         false
                       );
-                      setGroupName("");
+
+                      setGroupName(
+                        ""
+                      );
                     }}
                   >
                     Cancel
@@ -1939,206 +2279,226 @@ function AdminDashboard() {
                 </div>
               )}
 
-              {selectedRoom.groups?.length >
-              0 ? (
-                <div className="groups-grid">
-                  {selectedRoom.groups.map(
-                    (group) => (
-                      <div
-                        className="group-card"
-                        key={
-                          group._id
-                        }
-                      >
-                        <div className="group-card-header">
-                          <div>
-                            <span>
-                              GROUP
-                            </span>
-
-                            <h4>
-                              {
-                                group.name
-                              }
-                            </h4>
-                          </div>
-
-                          <button
-                            className="group-delete"
-                            disabled={
-                              actionLoading
-                            }
-                            onClick={() =>
-                              deleteGroup(
-                                group._id
-                              )
+              {
+                selectedRoom
+                  .groups
+                  ?.length >
+                0 ? (
+                  <div className="groups-grid">
+                    {
+                      selectedRoom.groups.map(
+                        group => (
+                          <div
+                            className="group-card"
+                            key={
+                              group._id
                             }
                           >
-                            Delete
-                          </button>
-                        </div>
+                            <div className="group-card-header">
+                              <div>
+                                <span>
+                                  GROUP
+                                </span>
 
-                        <div className="group-members">
-                          {group.members
-                            ?.length >
-                          0 ? (
-                            group.members.map(
-                              (
-                                member
-                              ) => {
-                                const participant =
-                                  selectedRoom.participants.find(
-                                    (
-                                      item
-                                    ) =>
-                                      String(
-                                        item._id
-                                      ) ===
-                                      String(
-                                        member.participantId
-                                      )
-                                  );
-
-                                return (
-                                  <div
-                                    className="group-member"
-                                    key={`${group._id}-${member.participantId}`}
-                                  >
-                                    <span>
-                                      {
-                                        participant
-                                          ?.username
-                                      }
-                                    </span>
-
-                                    <button
-                                      disabled={
-                                        actionLoading
-                                      }
-                                      onClick={() =>
-                                        removeUserFromGroup(
-                                          group._id,
-                                          member.participantId
-                                        )
-                                      }
-                                    >
-                                      Remove
-                                    </button>
-                                  </div>
-                                );
-                              }
-                            )
-                          ) : (
-                            <p className="group-empty">
-                              No users yet.
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="group-footer">
-                          <span>
-                            {group.members
-                              ?.length ||
-                              0}{" "}
-                            / 4 users
-                          </span>
-
-                          <button
-                            className="add-user-button"
-                            disabled={
-                              actionLoading ||
-                              group.members
-                                ?.length >=
-                                4
-                            }
-                            onClick={() =>
-                              setSelectedGroupId(
-                                selectedGroupId ===
-                                  group._id
-                                  ? null
-                                  : group._id
-                              )
-                            }
-                          >
-                            {group.members
-                              ?.length >=
-                            4
-                              ? "Full"
-                              : "Add user"}
-                          </button>
-                        </div>
-
-                        {selectedGroupId ===
-                          group._id && (
-                          <div className="user-picker">
-                            <div className="user-picker-header">
-                              <span>
-                                ADD USER
-                              </span>
+                                <h4>
+                                  {
+                                    group.name
+                                  }
+                                </h4>
+                              </div>
 
                               <button
+                                className="group-delete"
+                                disabled={
+                                  actionLoading
+                                }
                                 onClick={() =>
-                                  setSelectedGroupId(
-                                    null
+                                  deleteGroup(
+                                    group._id
                                   )
                                 }
                               >
-                                ×
+                                Delete
                               </button>
                             </div>
 
-                            {unassignedUsers.length >
-                            0 ? (
-                              <div className="user-picker-list">
-                                {unassignedUsers.map(
-                                  (
-                                    participant
-                                  ) => (
+                            <div className="group-members">
+                              {
+                                group
+                                  .members
+                                  ?.length >
+                                0 ? (
+                                  group.members.map(
+                                    member => {
+                                      const participant =
+                                        selectedRoom.participants?.find(
+                                          item =>
+                                            String(
+                                              item._id
+                                            ) ===
+                                            String(
+                                              member.participantId
+                                            )
+                                        );
+
+                                      return (
+                                        <div
+                                          className="group-member"
+                                          key={
+                                            `${group._id}-${member.participantId}`
+                                          }
+                                        >
+                                          <span>
+                                            {
+                                              participant
+                                                ?.username ||
+                                              member.username ||
+                                              "Participant"
+                                            }
+                                          </span>
+
+                                          <button
+                                            disabled={
+                                              actionLoading
+                                            }
+                                            onClick={() =>
+                                              removeUserFromGroup(
+                                                group._id,
+                                                member.participantId
+                                              )
+                                            }
+                                          >
+                                            Remove
+                                          </button>
+                                        </div>
+                                      );
+                                    }
+                                  )
+                                ) : (
+                                  <p className="group-empty">
+                                    No users yet.
+                                  </p>
+                                )
+                              }
+                            </div>
+
+                            <div className="group-footer">
+                              <span>
+                                {
+                                  group
+                                    .members
+                                    ?.length ||
+                                  0
+                                }{" "}
+                                / 4 users
+                              </span>
+
+                              <button
+                                className="add-user-button"
+                                disabled={
+                                  actionLoading ||
+                                  group
+                                    .members
+                                    ?.length >=
+                                    4
+                                }
+                                onClick={() =>
+                                  setSelectedGroupId(
+                                    selectedGroupId ===
+                                      group._id
+                                      ? null
+                                      : group._id
+                                  )
+                                }
+                              >
+                                {
+                                  group
+                                    .members
+                                    ?.length >=
+                                  4
+                                    ? "Full"
+                                    : "Add user"
+                                }
+                              </button>
+                            </div>
+
+                            {
+                              selectedGroupId ===
+                                group._id && (
+                                <div className="user-picker">
+                                  <div className="user-picker-header">
+                                    <span>
+                                      ADD USER
+                                    </span>
+
                                     <button
-                                      key={
-                                        participant._id
-                                      }
-                                      disabled={
-                                        actionLoading
-                                      }
                                       onClick={() =>
-                                        addUserToGroup(
-                                          group._id,
-                                          participant._id
+                                        setSelectedGroupId(
+                                          null
                                         )
                                       }
                                     >
-                                      {
-                                        participant.username
-                                      }
-
-                                      <span>
-                                        +
-                                      </span>
+                                      ×
                                     </button>
-                                  )
-                                )}
-                              </div>
-                            ) : (
-                              <p>
-                                All users are
-                                already assigned.
-                              </p>
-                            )}
+                                  </div>
+
+                                  {
+                                    unassignedUsers.length >
+                                    0 ? (
+                                      <div className="user-picker-list">
+                                        {
+                                          unassignedUsers.map(
+                                            participant => (
+                                              <button
+                                                key={
+                                                  participant._id
+                                                }
+                                                disabled={
+                                                  actionLoading
+                                                }
+                                                onClick={() =>
+                                                  addUserToGroup(
+                                                    group._id,
+                                                    participant._id
+                                                  )
+                                                }
+                                              >
+                                                {
+                                                  participant.username
+                                                }
+
+                                                <span>
+                                                  +
+                                                </span>
+                                              </button>
+                                            )
+                                          )
+                                        }
+                                      </div>
+                                    ) : (
+                                      <p>
+                                        All users are
+                                        already assigned.
+                                      </p>
+                                    )
+                                  }
+                                </div>
+                              )
+                            }
                           </div>
-                        )}
-                      </div>
-                    )
-                  )}
-                </div>
-              ) : (
-                <div className="management-empty">
-                  Create your first
-                  group, then add
-                  registered users
-                  to it.
-                </div>
-              )}
+                        )
+                      )
+                    }
+                  </div>
+                ) : (
+                  <div className="management-empty">
+                    Create your first
+                    group, then add
+                    registered users
+                    to it.
+                  </div>
+                )
+              }
             </div>
           </div>
         )}
@@ -2160,8 +2520,12 @@ function AdminDashboard() {
               CONFIRM ACTION
             </span>
 
-            <h3 id="confirm-modal-title">
-              {confirmModal.title}
+            <h3
+              id="confirm-modal-title"
+            >
+              {
+                confirmModal.title
+              }
             </h3>
 
             <p>

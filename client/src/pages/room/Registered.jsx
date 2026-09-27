@@ -96,6 +96,7 @@ function Registered() {
         }
 
         setStatus(data);
+
         setLastUpdated(
           new Date()
         );
@@ -122,7 +123,12 @@ function Registered() {
 
         if (
           data.currentRound > 0 &&
-          data.roundStatus === "active"
+          (
+            data.roundStatus ===
+              "active" ||
+            data.roundStatus ===
+              "voting"
+          )
         ) {
           navigate(
             `/room/${roomCode}/round/${data.currentRound}`,
@@ -130,14 +136,19 @@ function Registered() {
               state: {
                 participantId:
                   data.participantId,
+
                 username:
                   data.username,
+
                 roomName:
                   data.roomName
               },
+
               replace: true
             }
           );
+
+          return;
         }
       } catch {
         if (!cancelled) {
@@ -157,11 +168,12 @@ function Registered() {
     const interval =
       window.setInterval(
         loadStatus,
-        3000
+        2000
       );
 
     return () => {
       cancelled = true;
+
       window.clearInterval(
         interval
       );
@@ -285,6 +297,10 @@ function Registered() {
     status?.phase ===
       "processing";
 
+  const isVoting =
+    status?.roundStatus ===
+    "voting";
+
   return (
     <main className="registered-page">
       <section className="registered-shell">
@@ -330,6 +346,8 @@ function Registered() {
             <p>
               {isRegistration
                 ? "Everything is ready. Your meetup will begin soon."
+                : isVoting
+                ? "Voting is open. Choose the people you'd like to connect with."
                 : "Your next conversation is being prepared."}
             </p>
           </div>
@@ -340,12 +358,16 @@ function Registered() {
             <div className="registered-status-icon">
               {isMatchmaking
                 ? "♥"
+                : isVoting
+                ? "✓"
                 : "✦"}
             </div>
 
             <span className="registered-status-label">
               {isMatchmaking
                 ? "MATCHMAKING"
+                : isVoting
+                ? "VOTING OPEN"
                 : isRegistration
                 ? "MEETUP STATUS"
                 : "NEXT ROUND"}
@@ -354,6 +376,8 @@ function Registered() {
             <h2>
               {isMatchmaking
                 ? "Finding your connections"
+                : isVoting
+                ? "Choose your connections."
                 : isRegistration
                 ? "You're ready."
                 : "Get ready to meet."}
@@ -362,6 +386,8 @@ function Registered() {
             <p>
               {isMatchmaking
                 ? "We're putting everything together."
+                : isVoting
+                ? "Your selections are private and can be updated while voting is open."
                 : isRegistration
                 ? "Stay here while the organizer gets things started."
                 : "Your group will appear as soon as the next round begins."}
@@ -383,7 +409,8 @@ function Registered() {
               </div>
 
               <div className="registered-round-count">
-                {currentRound}/{totalRounds}
+                {currentRound}/
+                {totalRounds}
               </div>
             </div>
 
@@ -391,7 +418,8 @@ function Registered() {
               <div
                 className="registered-progress-fill"
                 style={{
-                  width: `${roundProgress}%`
+                  width:
+                    `${roundProgress}%`
                 }}
               />
             </div>
@@ -457,7 +485,9 @@ function Registered() {
                   </div>
 
                   <span className="registered-live">
-                    ACTIVE
+                    {isVoting
+                      ? "VOTING"
+                      : "ACTIVE"}
                   </span>
                 </div>
 
@@ -519,12 +549,14 @@ function Registered() {
 
             <div>
               <strong>
-                You're all set
+                {isVoting
+                  ? "Voting is open"
+                  : "You're all set"}
               </strong>
 
               <span>
                 {status?.hasVoted
-                  ? "Your selection has been saved."
+                  ? "Your selection has been saved. You can update it while voting remains open."
                   : "We'll let you know when there's something to do."}
               </span>
             </div>
